@@ -1,0 +1,96 @@
+rules:
+  - id: python-shell-true
+    languages: [python]
+    severity: ERROR
+    message: Dangerous subprocess execution with shell=True can lead to command injection.
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+    metadata:
+      category: security
+      technology: [python]
+      confidence: high
+
+  - id: python-eval-use
+    languages: [python]
+    severity: ERROR
+    message: eval() executes arbitrary input and should be avoided in untrusted paths.
+    pattern: eval(...)
+    metadata:
+      category: security
+      technology: [python]
+      confidence: high
+
+  - id: python-yaml-unsafe-load
+    languages: [python]
+    severity: WARNING
+    message: yaml.load without SafeLoader can deserialize unsafe content.
+    pattern: yaml.load(...)
+    metadata:
+      category: security
+      technology: [python]
+      confidence: medium
+
+  - id: javascript-eval-use
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: eval() executes dynamic code and can lead to code injection.
+    pattern: eval(...)
+    metadata:
+      category: security
+      technology: [javascript, typescript]
+      confidence: high
+
+  - id: javascript-new-function
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: new Function() executes dynamic code and should be avoided with untrusted input.
+    pattern: new Function(...)
+    metadata:
+      category: security
+      technology: [javascript, typescript]
+      confidence: medium
+
+  - id: java-runtime-exec
+    languages: [java]
+    severity: ERROR
+    message: Runtime.exec can execute operating system commands and is dangerous with untrusted input.
+    pattern-either:
+      - pattern: Runtime.getRuntime().exec(...)
+      - pattern: $PROC.exec(...)
+    metadata:
+      category: security
+      technology: [java]
+      confidence: high
+
+  - id: java-process-builder
+    languages: [java]
+    severity: WARNING
+    message: ProcessBuilder can launch shell commands and should be reviewed for injection risks.
+    pattern: new ProcessBuilder(...)
+    metadata:
+      category: security
+      technology: [java]
+      confidence: medium
+
+  - id: java-sql-concat
+    languages: [java]
+    severity: ERROR
+    message: SQL built with string concatenation may be vulnerable to SQL injection.
+    pattern-either:
+      - pattern: $STMT.executeQuery("..." + ...)
+      - pattern: $STMT.executeUpdate("..." + ...)
+      - pattern: $CONN.prepareStatement("..." + ...)
+    metadata:
+      category: security
+      technology: [java]
+      confidence: medium
+
+  - id: java-xxe-document-builder
+    languages: [java]
+    severity: WARNING
+    message: XML parsers should disable external entity resolution to prevent XXE.
+    pattern: DocumentBuilderFactory.newInstance()
+    metadata:
+      category: security
+      technology: [java]
+      confidence: medium
