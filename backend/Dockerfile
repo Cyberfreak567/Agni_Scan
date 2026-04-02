@@ -1,0 +1,35 @@
+FROM python:3.12-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    nmap \
+    nikto \
+    wget \
+    unzip \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install nuclei
+RUN mkdir -p /opt/nuclei \
+    && wget -q https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_2.10.4_linux_amd64.zip -O /tmp/nuclei.zip \
+    && unzip -q /tmp/nuclei.zip -d /opt/nuclei \
+    && mv /opt/nuclei/nuclei /usr/local/bin/nuclei \
+    && chmod +x /usr/local/bin/nuclei \
+    && rm -f /tmp/nuclei.zip
+
+WORKDIR /app
+
+COPY backend/requirements.txt /app/backend/requirements.txt
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+
+COPY backend /app/backend
+
+WORKDIR /app
+
+EXPOSE 8000
+
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

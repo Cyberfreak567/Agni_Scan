@@ -110,6 +110,14 @@ def build_sast_observations(stats: SourceStats) -> list[dict]:
 def prepare_source(workspace: Path, source_type: str, target: str) -> Path:
     source_dir = workspace / "source"
     source_dir.mkdir(parents=True, exist_ok=True)
+    if source_type == "local":
+        target_path = Path(target)
+        if not target_path.exists():
+            raise RuntimeError(f"Local source directory not found: {target}")
+        if source_dir.exists():
+            shutil.rmtree(source_dir)
+        shutil.copytree(target_path, source_dir)
+        return source_dir
     if source_type == "github":
         git_path = shutil.which("git")
         if not git_path:
@@ -134,31 +142,60 @@ def run_semgrep(source_dir: Path) -> tuple[list[dict], dict, str, str]:
     tool_state = verify_tool("semgrep")
     if not tool_state["installed"]:
         raise RuntimeError("semgrep is not installed or not accessible on PATH")
+
+    command = build_tool_command(
+        "semgrep",
+        "scan",
+        "--config",
+        str(SEMGREP_RULES),
+        "--json",
+        "--metrics",
+        "off",
+        "--disable-version-check",
+        "--no-git-ignore",
+        "--timeout",
+        "60",
+        "--exclude",
+        "node_modules",
+        "--exclude",
+        ".venv",
+        "--exclude",
+        "vendor",
+        "--exclude",
+        "tests",
+        "--exclude",
+        "test",
+        "--max-target-bytes",
+        "1000000",
+        str(source_dir),
+    )
+
     result = run_command(
-        build_tool_command(
-            "semgrep",
-            "scan",
-            "--config",
-            str(SEMGREP_RULES),
-            "--metrics",
-            "off",
-            "--disable-version-check",
-            "--no-git-ignore",
-            "--json",
-            str(source_dir),
-        ),
+        command,
         env={
             "NO_COLOR": "1",
             "CI": "1",
+            "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION": "python",
         },
+        timeout=240,
     )
+
+    if result.returncode == -9:
+        raise RuntimeError(f"Semgrep scan timed out after 240 seconds. {result.stderr}")
+
     if result.returncode not in {0, 1}:
-        raise RuntimeError(f"Semgrep failed: {result.stderr or result.stdout}")
+        raise RuntimeError(f"Semgrep failed (exit {result.returncode}): {result.stderr or result.stdout}")
+
     if not result.stdout.strip():
+        # Check if stderr has any useful info
+        if "No files were scanned" in result.stderr:
+            return [], tool_state, result.stdout, result.stderr
         raise RuntimeError(f"Semgrep produced no JSON output: {result.stderr or 'empty stdout'}")
+
     stderr_text = result.stderr or ""
-    if "Traceback" in stderr_text or "Fatal error:" in stderr_text or "Failed to " in stderr_text:
-        raise RuntimeError(f"Semgrep failed: {result.stderr or result.stdout}")
+    if "Traceback" in stderr_text or "Fatal error:" in stderr_text:
+        raise RuntimeError(f"Semgrep failed with internal error: {result.stderr}")
+
     findings = parse_semgrep_output(safe_json_loads(result.stdout))
     return findings, tool_state, result.stdout, result.stderr
 
@@ -171,10 +208,20 @@ def run_bandit(source_dir: Path) -> tuple[list[dict], dict, str, str]:
     if result.returncode not in {0, 1}:
         raise RuntimeError(f"Bandit failed: {result.stderr or result.stdout}")
     payload = safe_json_loads(result.stdout)
-    if payload.get("errors"):
-        raise RuntimeError(f"Bandit reported scan errors: {payload['errors']}")
     stderr_text = result.stderr or ""
     if "Bandit internal error" in stderr_text or "Traceback" in stderr_text:
         raise RuntimeError(f"Bandit failed: {result.stderr or result.stdout}")
     findings = parse_bandit_output(payload)
+    for error in payload.get("errors", []):
+        findings.append(
+            {
+                "title": "Bandit skipped unparsable file",
+                "severity": "low",
+                "description": error.get("reason") or "Bandit could not parse a Python file.",
+                "tool": "bandit",
+                "file": error.get("filename"),
+                "finding_kind": "observation",
+                "raw_json": error,
+            }
+        )
     return findings, tool_state, result.stdout, result.stderr

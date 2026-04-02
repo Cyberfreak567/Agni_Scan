@@ -1,7 +1,23 @@
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { api, clearSession, downloadReport, getSession } from "../lib/api";
 import { ScanForms } from "./ScanForms";
 import { FlameMark } from "./FlameMark";
+
+const reveal = {
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.58, ease: [0.22, 1, 0.36, 1] } },
+};
+
+const stagger = {
+  hidden: {},
+  show: {
+    transition: {
+      staggerChildren: 0.08,
+      delayChildren: 0.06,
+    },
+  },
+};
 
 function severityColor(severity) {
   return {
@@ -75,16 +91,16 @@ export function Dashboard() {
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <div className="brand-lockup">
+      <motion.header className="topbar" initial="hidden" animate="show" variants={stagger}>
+        <motion.div className="brand-lockup" variants={reveal}>
           <FlameMark compact />
           <div className="brand-stack">
             <p className="eyebrow">Agniscan Control Deck</p>
             <h1>Agniscan</h1>
             <p className="lede">Real red-team scanning for code, web exposure, and OWASP-mapped findings.</p>
           </div>
-        </div>
-        <div className="topbar-actions">
+        </motion.div>
+        <motion.div className="topbar-actions" variants={reveal}>
           <div className="user-chip">
             {session.username} <span>{session.role}</span>
           </div>
@@ -97,71 +113,108 @@ export function Dashboard() {
           >
             Logout
           </button>
-        </div>
-      </header>
+        </motion.div>
+      </motion.header>
 
-      <section className="hero-banner panel">
-        <div>
+      <motion.section
+        className="hero-banner panel"
+        initial={{ opacity: 0, y: 30, rotateX: 8 }}
+        animate={{ opacity: 1, y: 0, rotateX: 0 }}
+        transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <motion.div className="hero-copy" initial={{ opacity: 0, x: -18 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.08, duration: 0.56 }}>
           <p className="eyebrow">Live Mission Feed</p>
           <h2>Precision scanning with a hotter signal and less noise</h2>
           <p className="lede">
             Agniscan fuses SAST, Nmap reconnaissance, Nuclei templates, Nikto verification, and
             OWASP-focused web analysis into a single operator workspace.
           </p>
-        </div>
-        <div className="hero-visual" aria-hidden="true">
+          <div className="hero-stat-row">
+            <div className="hero-stat">
+              <strong>{scans.length}</strong>
+              <span>Mission records</span>
+            </div>
+            <div className="hero-stat">
+              <strong>{Object.values(tools).filter((tool) => tool.installed).length}</strong>
+              <span>Active engines</span>
+            </div>
+            <div className="hero-stat">
+              <strong>{selectedScan?.summary?.total_vulnerabilities ?? summary?.total_vulnerabilities ?? 0}</strong>
+              <span>Tracked findings</span>
+            </div>
+          </div>
+        </motion.div>
+        <motion.div
+          className="hero-visual"
+          aria-hidden="true"
+          animate={{ y: [0, -10, 0], rotateY: [-4, 4, -4] }}
+          transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
+        >
           <div className="hero-orbit orbit-one" />
           <div className="hero-orbit orbit-two" />
           <div className="hero-image-shell">
             <div className="hero-image-glow" />
             <img className="hero-image" src="/agniscan-bot.png" alt="Agniscan assistant robot" />
           </div>
-        </div>
-      </section>
+        </motion.div>
+      </motion.section>
 
-      <section className="tool-strip">
+      <motion.section className="tool-strip" initial="hidden" animate="show" variants={stagger}>
         {Object.entries(tools).map(([tool, info]) => (
-          <div className={`tool-card ${info.installed ? "ready" : "missing"}`} key={tool}>
+          <motion.div
+            className={`tool-card ${info.installed ? "ready" : "missing"}`}
+            key={tool}
+            variants={reveal}
+            whileHover={{ y: -8, rotateX: 7, rotateY: tool.length % 2 === 0 ? -5 : 5 }}
+          >
             <strong>{tool}</strong>
             <span>{info.installed ? "Installed" : "Unavailable"}</span>
             {info.mode && <small>{info.mode}</small>}
-          </div>
+          </motion.div>
         ))}
-      </section>
+      </motion.section>
 
       {summary && (
-        <section className="summary-grid">
-          <div className="panel"><h3>Total scans</h3><p>{summary.total_scans}</p></div>
-          <div className="panel"><h3>Completed</h3><p>{summary.completed_scans}</p></div>
-          <div className="panel"><h3>Failed</h3><p>{summary.failed_scans}</p></div>
-          <div className="panel"><h3>Verified vulnerabilities</h3><p>{summary.total_vulnerabilities}</p></div>
-        </section>
+        <motion.section className="summary-grid" initial="hidden" animate="show" variants={stagger}>
+          <motion.div className="panel metric-panel" variants={reveal}><h3>Total scans</h3><p>{summary.total_scans}</p></motion.div>
+          <motion.div className="panel metric-panel" variants={reveal}><h3>Completed</h3><p>{summary.completed_scans}</p></motion.div>
+          <motion.div className="panel metric-panel" variants={reveal}><h3>Failed</h3><p>{summary.failed_scans}</p></motion.div>
+          <motion.div className="panel metric-panel" variants={reveal}><h3>Verified vulnerabilities</h3><p>{summary.total_vulnerabilities}</p></motion.div>
+        </motion.section>
       )}
 
       <ScanForms onCreated={refresh} />
       {error && <div className="error-banner">{error}</div>}
 
       <div className="content-grid">
-        <section className="panel">
+        <motion.section className="panel" initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.58 }}>
           <h2>All Scans</h2>
-          <div className="scan-list">
+          <motion.div className="scan-list" initial="hidden" animate="show" variants={stagger}>
             {scans.map((scan) => (
-              <div key={scan.id} className={`scan-row ${selectedScan?.id === scan.id ? "active" : ""}`}>
+              <motion.div
+                key={scan.id}
+                className={`scan-row ${selectedScan?.id === scan.id ? "active" : ""}`}
+                variants={reveal}
+                whileHover={{ y: -6, rotateX: 3 }}
+                layout
+              >
                 <button type="button" className="scan-select" onClick={() => setSelectedScan(scan)}>
                   <div><strong>#{scan.id}</strong> {scan.scan_type.toUpperCase()} {scan.scan_mode ? `(${scan.scan_mode})` : ""}</div>
-                  <div>{scan.target}</div>
-                  <div>{scan.status}</div>
-                  <div>{scan.current_stage || "Queued"}</div>
-                  <div>{scan.progress}%</div>
+                  <div className="scan-target">{scan.target}</div>
+                  <div className="scan-meta-line">
+                    <span>{scan.status}</span>
+                    <span>{scan.current_stage || "Queued"}</span>
+                    <span>{scan.progress}%</span>
+                  </div>
                 </button>
                 <button type="button" className="ghost-button delete-button" onClick={() => deleteScan(scan.id)}>Delete</button>
-              </div>
+              </motion.div>
             ))}
             {!scans.length && <p>No scans yet.</p>}
-          </div>
-        </section>
+          </motion.div>
+        </motion.section>
 
-        <section className="panel detail-panel">
+        <motion.section className="panel detail-panel" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.58 }}>
           <h2>Detailed Report</h2>
           {selectedScan ? (
             <>
@@ -172,7 +225,12 @@ export function Dashboard() {
                 <div><span>Stage</span><strong>{selectedScan.current_stage || "-"}</strong></div>
               </div>
               <div className="progress-track">
-                <div className="progress-bar" style={{ width: `${selectedScan.progress}%` }} />
+                <motion.div
+                  className="progress-bar"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${selectedScan.progress}%` }}
+                  transition={{ duration: 0.7, ease: "easeOut" }}
+                />
               </div>
               <div className="report-actions">
                 <button type="button" onClick={async () => {
@@ -188,10 +246,10 @@ export function Dashboard() {
               </div>
 
               <div className="summary-grid compact">
-                <div className="panel inset"><h3>Verified vulnerabilities</h3><p>{selectedScan.summary?.total_vulnerabilities ?? 0}</p></div>
-                <div className="panel inset"><h3>Observations</h3><p>{selectedScan.summary?.total_observations ?? 0}</p></div>
-                <div className="panel inset"><h3>High + Critical</h3><p>{(selectedScan.summary?.severity_distribution?.high ?? 0) + (selectedScan.summary?.severity_distribution?.critical ?? 0)}</p></div>
-                <div className="panel inset"><h3>OWASP buckets</h3><p>{Object.keys(selectedScan.summary?.owasp_top_10 || {}).length}</p></div>
+                <div className="panel inset metric-panel"><h3>Verified vulnerabilities</h3><p>{selectedScan.summary?.total_vulnerabilities ?? 0}</p></div>
+                <div className="panel inset metric-panel"><h3>Observations</h3><p>{selectedScan.summary?.total_observations ?? 0}</p></div>
+                <div className="panel inset metric-panel"><h3>High + Critical</h3><p>{(selectedScan.summary?.severity_distribution?.high ?? 0) + (selectedScan.summary?.severity_distribution?.critical ?? 0)}</p></div>
+                <div className="panel inset metric-panel"><h3>OWASP buckets</h3><p>{Object.keys(selectedScan.summary?.owasp_top_10 || {}).length}</p></div>
               </div>
 
               {selectedScan.summary?.owasp_top_10 && Object.keys(selectedScan.summary.owasp_top_10).length > 0 && (
@@ -253,7 +311,7 @@ export function Dashboard() {
           ) : (
             <p>Select a scan to inspect the parsed findings and logs.</p>
           )}
-        </section>
+        </motion.section>
       </div>
     </div>
   );

@@ -1,9 +1,12 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { api } from "../lib/api";
 
 function normalizeUrlInput(value) {
   return value.trim().split(/\s+/)[0] || "";
 }
+
+const cardTransition = { duration: 0.55, ease: [0.22, 1, 0.36, 1] };
 
 export function ScanForms({ onCreated }) {
   const [repoUrl, setRepoUrl] = useState("");
@@ -51,9 +54,15 @@ export function ScanForms({ onCreated }) {
 
   return (
     <div className="form-grid">
-      <form className="panel" onSubmit={submitSast}>
+      <motion.form
+        className="panel mission-panel"
+        onSubmit={submitSast}
+        initial={{ opacity: 0, y: 28, rotateX: 8 }}
+        animate={{ opacity: 1, y: 0, rotateX: 0 }}
+        transition={cardTransition}
+      >
         <h2>SAST</h2>
-        <p>Submit a GitHub repository URL or upload a ZIP archive for Semgrep and Bandit.</p>
+        <p className="section-copy">Submit a GitHub repository URL or upload a ZIP archive for Semgrep and Bandit.</p>
         <label>
           GitHub repo URL
           <input
@@ -70,10 +79,16 @@ export function ScanForms({ onCreated }) {
           <input type="file" accept=".zip" onChange={(event) => setZipFile(event.target.files?.[0] || null)} />
         </label>
         <button>Launch SAST Scan</button>
-      </form>
-      <form className="panel" onSubmit={submitDast}>
+      </motion.form>
+      <motion.form
+        className="panel mission-panel"
+        onSubmit={submitDast}
+        initial={{ opacity: 0, y: 28, rotateX: 8 }}
+        animate={{ opacity: 1, y: 0, rotateX: 0 }}
+        transition={{ ...cardTransition, delay: 0.08 }}
+      >
         <h2>DAST</h2>
-        <p>Probe a live target with OWASP-focused web checks, Nuclei, Nmap, and optional Nikto. The target must be HTTP or HTTPS.</p>
+        <p className="section-copy">Probe a live target with OWASP-focused web checks, Nuclei, Nmap, and optional Nikto. The target must be HTTP or HTTPS.</p>
         <label>
           Scan mode
           <select value={dastMode} onChange={(event) => setDastMode(event.target.value)}>
@@ -93,8 +108,17 @@ export function ScanForms({ onCreated }) {
           />
         </label>
         <button>Launch DAST Scan</button>
-      </form>
-      {message && <div className="status-banner">{message}</div>}
+      </motion.form>
+      {message && (
+        <motion.div
+          className="status-banner"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={cardTransition}
+        >
+          {message}
+        </motion.div>
+      )}
     </div>
   );
 }

@@ -128,7 +128,7 @@ select:focus {
 
 .auth-shell,
 .app-shell {
-  padding: 28px;
+  padding: 32px;
   position: relative;
   z-index: 1;
 }
@@ -146,7 +146,7 @@ select:focus {
 }
 
 .panel {
-  padding: 24px;
+  padding: 26px;
   transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
 }
 
@@ -164,7 +164,7 @@ select:focus {
 .auth-panel {
   max-width: 760px;
   margin: 4vh auto;
-  padding: 36px;
+  padding: 40px;
 }
 
 .brand-lockup {
@@ -396,20 +396,51 @@ h2 {
 }
 
 .topbar {
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .hero-banner {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
-  gap: 20px;
+  gap: 28px;
   align-items: center;
   overflow: hidden;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
   background:
     radial-gradient(circle at right center, rgba(255, 122, 47, 0.18), transparent 34%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
     var(--panel-strong);
+}
+
+.hero-copy {
+  display: grid;
+  gap: 14px;
+}
+
+.hero-stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.hero-stat {
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.hero-stat strong {
+  display: block;
+  font-size: 1.5rem;
+  font-family: "Fraunces", Georgia, serif;
+}
+
+.hero-stat span {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .hero-visual {
@@ -550,7 +581,8 @@ h2 {
 
 .tool-strip {
   flex-wrap: wrap;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
+  perspective: 1200px;
 }
 
 .tool-card {
@@ -562,11 +594,14 @@ h2 {
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01)),
     rgba(255, 255, 255, 0.02);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  transition: transform 180ms ease, border-color 180ms ease;
+  transform-style: preserve-3d;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .tool-card:hover {
-  transform: translateY(-3px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 18px 40px rgba(0, 0, 0, 0.24);
 }
 
 .tool-card strong {
@@ -603,6 +638,21 @@ h2 {
   margin-top: 18px;
 }
 
+.metric-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.metric-panel::before {
+  content: "";
+  position: absolute;
+  inset: -35% auto auto -15%;
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle, rgba(255, 179, 71, 0.18), transparent 70%);
+  pointer-events: none;
+}
+
 .status-banner,
 .error-banner {
   padding: 15px 18px;
@@ -635,6 +685,7 @@ h2 {
   color: var(--ink);
   border: 1px solid rgba(255, 255, 255, 0.07);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transform-style: preserve-3d;
 }
 
 .scan-row.active {
@@ -644,7 +695,7 @@ h2 {
 
 .scan-select {
   display: grid;
-  gap: 6px;
+  gap: 10px;
   text-align: left;
   width: 100%;
   background: transparent;
@@ -658,6 +709,27 @@ h2 {
   transform: none;
   box-shadow: none;
   filter: none;
+}
+
+.scan-target {
+  color: var(--muted);
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.scan-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: rgba(244, 241, 234, 0.88);
+}
+
+.scan-meta-line span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.88rem;
 }
 
 .delete-button {
@@ -676,6 +748,7 @@ h2 {
 
 .detail-meta {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  margin-bottom: 6px;
 }
 
 .detail-meta span {
@@ -702,6 +775,27 @@ h2 {
   animation: scanFlow 2.4s linear infinite;
 }
 
+.mission-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.mission-panel::before {
+  content: "";
+  position: absolute;
+  inset: -25% auto auto -5%;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(108, 229, 255, 0.12), transparent 70%);
+  pointer-events: none;
+}
+
+.section-copy {
+  color: var(--muted);
+  line-height: 1.65;
+  margin-top: -2px;
+}
+
 .vuln-list {
   display: grid;
   gap: 14px;
@@ -714,6 +808,13 @@ h2 {
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
     rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.vuln-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 179, 71, 0.2);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.18);
 }
 
 .vuln-card.observation {
@@ -902,6 +1003,10 @@ h2 {
 
 @media (max-width: 900px) {
   .hero-banner {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-stat-row {
     grid-template-columns: 1fr;
   }
 

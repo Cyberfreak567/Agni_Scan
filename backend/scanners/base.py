@@ -15,6 +15,7 @@ VENV_SCRIPTS = PROJECT_ROOT / ".venv" / "Scripts"
 LOCAL_TOOLS = PROJECT_ROOT / "backend" / "data" / "tools"
 VENV_PYTHON = VENV_SCRIPTS / "python.exe"
 USER_HOME = Path.home()
+GLOBAL_PYTHON312 = USER_HOME / "AppData" / "Local" / "Programs" / "Python" / "Python312" / "python.exe"
 
 
 @dataclass
@@ -77,11 +78,19 @@ def resolve_tool(binary: str) -> str | None:
 
 
 def verify_tool(binary: str) -> dict:
+    if binary == "semgrep" and GLOBAL_PYTHON312.exists():
+        return {"installed": True, "path": f"{GLOBAL_PYTHON312} -m semgrep.console_scripts.pysemgrep"}
+    if binary == "bandit" and GLOBAL_PYTHON312.exists():
+        return {"installed": True, "path": f"{GLOBAL_PYTHON312} -m bandit"}
     found = resolve_tool(binary)
     return {"installed": bool(found), "path": found}
 
 
 def build_tool_command(binary: str, *args: str) -> list[str]:
+    if binary == "semgrep" and GLOBAL_PYTHON312.exists():
+        return [str(GLOBAL_PYTHON312), "-m", "semgrep.console_scripts.pysemgrep", *args]
+    if binary == "bandit" and GLOBAL_PYTHON312.exists():
+        return [str(GLOBAL_PYTHON312), "-m", binary, *args]
     if binary == "bandit" and VENV_PYTHON.exists():
         return [str(VENV_PYTHON), "-m", binary, *args]
     resolved = resolve_tool(binary)
@@ -90,27 +99,42 @@ def build_tool_command(binary: str, *args: str) -> list[str]:
     return [resolved, *args]
 
 
-def run_command(command: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> CommandResult:
-    logger.info("Running command: %s", command)
+def run_command(
+    command: list[str],
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+    timeout: int | None = None,
+) -> CommandResult:
+    logger.info("Running command (timeout=%s): %s", timeout, command)
     full_env = os.environ.copy()
     if env:
         full_env.update(env)
-    completed = subprocess.run(
-        command,
-        cwd=str(cwd) if cwd else None,
-        capture_output=True,
-        text=False,
-        env=full_env,
-        shell=False,
-        check=False,
-    )
-    logger.info("Command finished with exit code %s", completed.returncode)
-    return CommandResult(
-        command=command,
-        returncode=completed.returncode,
-        stdout=_decode_output(completed.stdout),
-        stderr=_decode_output(completed.stderr),
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(cwd) if cwd else None,
+            capture_output=True,
+            text=False,
+            env=full_env,
+            shell=False,
+            check=False,
+            timeout=timeout,
+        )
+        logger.info("Command finished with exit code %s", completed.returncode)
+        return CommandResult(
+            command=command,
+            returncode=completed.returncode,
+            stdout=_decode_output(completed.stdout),
+            stderr=_decode_output(completed.stderr),
+        )
+    except subprocess.TimeoutExpired as exc:
+        logger.warning("Command timed out after %s seconds: %s", timeout, command)
+        return CommandResult(
+            command=command,
+            returncode=-9,
+            stdout=_decode_output(exc.stdout),
+            stderr=_decode_output(exc.stderr) + f"\n\nERROR: Command timed out after {timeout} seconds.",
+        )
 
 
 def safe_json_loads(raw: str) -> dict:

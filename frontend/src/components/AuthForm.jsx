@@ -1,6 +1,22 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { api, setSession } from "../lib/api";
 import { FlameMark } from "./FlameMark";
+
+const shellTransition = { duration: 0.65, ease: [0.22, 1, 0.36, 1] };
+const staggerParent = {
+  hidden: {},
+  show: {
+    transition: {
+      staggerChildren: 0.08,
+      delayChildren: 0.08,
+    },
+  },
+};
+const riseIn = {
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0, transition: shellTransition },
+};
 
 export function AuthForm({ onAuthenticated }) {
   const [mode, setMode] = useState("login");
@@ -32,33 +48,44 @@ export function AuthForm({ onAuthenticated }) {
 
   return (
     <div className="auth-shell">
-      <div className="auth-panel">
-        <div className="brand-lockup">
+      <motion.div
+        className="auth-panel"
+        initial={{ opacity: 0, y: 28, rotateX: 8 }}
+        animate={{ opacity: 1, y: 0, rotateX: 0 }}
+        transition={shellTransition}
+      >
+        <motion.div className="brand-lockup" variants={staggerParent} initial="hidden" animate="show">
           <FlameMark />
-          <div>
+          <motion.div variants={riseIn}>
             <p className="eyebrow">Agniscan // Adversarial Validation Suite</p>
             <h1>Agniscan</h1>
             <p className="lede">
               Launch code and live-target assessments with a cinematic command-center interface built
               around Semgrep, Bandit, Nuclei, Nmap, Nikto, and OWASP-focused web checks.
             </p>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
         <div className="auth-stage" aria-hidden="true">
           <span />
           <span />
           <span />
         </div>
-        <form onSubmit={submit} className="auth-form">
-          <label>
+        <motion.form
+          onSubmit={submit}
+          className="auth-form"
+          variants={staggerParent}
+          initial="hidden"
+          animate="show"
+        >
+          <motion.label variants={riseIn}>
             Username
             <input
               value={form.username}
               onChange={(event) => setForm({ ...form, username: event.target.value })}
               placeholder="analyst_admin"
             />
-          </label>
-          <label>
+          </motion.label>
+          <motion.label variants={riseIn}>
             Password
             <input
               type="password"
@@ -66,26 +93,33 @@ export function AuthForm({ onAuthenticated }) {
               onChange={(event) => setForm({ ...form, password: event.target.value })}
               placeholder="Minimum 8 characters"
             />
-          </label>
+          </motion.label>
           {mode === "register" && (
-            <label>
+            <motion.label variants={riseIn}>
               Role
               <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })}>
                 <option value="user">User</option>
                 <option value="admin">Admin</option>
               </select>
-            </label>
+            </motion.label>
           )}
-          {error && <div className="error-banner">{error}</div>}
-          <button disabled={loading}>{loading ? "Working..." : mode === "login" ? "Login" : "Register"}</button>
-        </form>
-        <div className="auth-switch">
+          {error && <motion.div variants={riseIn} className="error-banner">{error}</motion.div>}
+          <motion.button variants={riseIn} disabled={loading}>
+            {loading ? "Working..." : mode === "login" ? "Login" : "Register"}
+          </motion.button>
+        </motion.form>
+        <motion.div
+          className="auth-switch"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.28 }}
+        >
           <span>{mode === "login" ? "Need an account?" : "Already registered?"}</span>
           <button type="button" className="ghost-button" onClick={() => setMode(mode === "login" ? "register" : "login")}>
             {mode === "login" ? "Register" : "Login"}
           </button>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }

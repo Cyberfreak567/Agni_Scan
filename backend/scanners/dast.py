@@ -6,6 +6,7 @@ import tempfile
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from ..parsers.dast import infer_owasp, parse_nikto_output, parse_nmap_output, parse_nuclei_output, score_from_severity
@@ -61,9 +62,13 @@ class _HTMLSignalParser(HTMLParser):
 
 def _http_fetch(target_url: str, timeout: int = 20) -> tuple[str, object, int]:
     request = Request(target_url, headers={"User-Agent": "RedTeamScanner/1.0"})
-    with urlopen(request, timeout=timeout) as response:
-        body = response.read(250_000).decode("utf-8", errors="replace")
-        return body, response.headers, response.status
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            body = response.read(250_000).decode("utf-8", errors="replace")
+            return body, response.headers, response.status
+    except HTTPError as exc:
+        body = exc.read(250_000).decode("utf-8", errors="replace")
+        return body, exc.headers, exc.code
 
 
 def _same_origin(base_url: str, candidate: str) -> bool:
@@ -134,6 +139,24 @@ def run_http_baseline(target_url: str) -> tuple[list[dict], str, str]:
         return [], "", f"HTTP baseline probe skipped: {exc}"
 
     findings: list[dict] = []
+    if status >= 400:
+        findings.append(
+            {
+                "title": f"HTTP probe returned status {status}",
+                "severity": "low",
+                "score": 0.0,
+                "finding_kind": "observation",
+                "owasp_category": "A05:2021 - Security Misconfiguration",
+                "confidence": "high",
+                "file": target_url,
+                "line_number": None,
+                "description": f"Initial HTTP baseline request received status {status}. Results may be partial for blocked or missing pages.",
+                "evidence": f"HTTP status: {status}",
+                "tool": "http-baseline",
+                "raw_json": {"url": target_url, "status": status},
+            }
+        )
+
     if target_url.startswith("http://"):
         findings.append(
             {
@@ -253,16 +276,34 @@ def run_http_baseline(target_url: str) -> tuple[list[dict], str, str]:
             }
         )
 
-    return findings, f"Fetched {target_url} and inspected headers/body.", ""
+    return findings, f"Fetched {target_url} (status {status}) and inspected headers/body.", ""
 
 
 def run_owasp_web_checks(target_url: str, mode: str) -> tuple[list[dict], str, str]:
     try:
-        body, headers, _ = _http_fetch(target_url)
+        body, headers, status = _http_fetch(target_url)
     except Exception as exc:
         return [], "", f"OWASP web checks skipped: {exc}"
 
     findings: list[dict] = []
+    if status >= 400:
+        findings.append(
+            {
+                "title": f"OWASP checks ran on HTTP status {status}",
+                "severity": "low",
+                "score": 0.0,
+                "finding_kind": "observation",
+                "owasp_category": "A05:2021 - Security Misconfiguration",
+                "confidence": "high",
+                "file": target_url,
+                "line_number": None,
+                "description": f"Target responded with HTTP {status}. Active OWASP checks were limited to available content.",
+                "evidence": f"HTTP status: {status}",
+                "tool": "owasp-web",
+                "raw_json": {"url": target_url, "status": status},
+            }
+        )
+
     candidate_urls, forms = _collect_candidate_urls(target_url, body, mode)
 
     if headers.get("Access-Control-Allow-Origin") == "*" and str(headers.get("Access-Control-Allow-Credentials", "")).lower() == "true":
@@ -387,7 +428,7 @@ def run_owasp_web_checks(target_url: str, mode: str) -> tuple[list[dict], str, s
                     }
                 )
 
-    return findings, f"Collected {len(candidate_urls)} same-origin URLs and ran OWASP-oriented web checks.", ""
+    return findings, f"Collected {len(candidate_urls)} same-origin URLs and ran OWASP-oriented web checks (base status {status}).", ""
 
 
 def run_nuclei(target_url: str, mode: str) -> tuple[list[dict], dict, str, str]:
@@ -451,7 +492,21 @@ def run_nmap(target_url: str, mode: str) -> tuple[list[dict], dict, str, str]:
 def run_nikto(target_url: str, mode: str) -> tuple[list[dict], dict, str, str]:
     tool_state = verify_nikto()
     if not tool_state["installed"]:
-        return [], tool_state, "", "Nikto skipped because Docker is not available."
+        observation = {
+            "title": "Nikto unavailable",
+            "severity": "low",
+            "score": 0.0,
+            "finding_kind": "observation",
+            "owasp_category": "A05:2021 - Security Misconfiguration",
+            "confidence": "high",
+            "file": target_url,
+            "line_number": None,
+            "description": "Nikto was skipped because Docker is not available on this host.",
+            "evidence": "docker binary not detected",
+            "tool": "nikto",
+            "raw_json": {"reason": "docker_not_available"},
+        }
+        return [observation], tool_state, "", "Nikto skipped because Docker is not available."
 
     DOCKER_CONFIG.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent.parent / "data") as temp_dir:
@@ -473,14 +528,61 @@ def run_nikto(target_url: str, mode: str) -> tuple[list[dict], dict, str, str]:
             "json",
             "-Tuning",
             tuning,
+            "-timeout",
+            "15",
             "-o",
             "/out/nikto.json",
         )
-        result = run_command(command, env={"DOCKER_CONFIG": str(DOCKER_CONFIG)})
+        nikto_timeout = 420 if mode == "quick" else 900
+        result = run_command(command, env={"DOCKER_CONFIG": str(DOCKER_CONFIG)}, timeout=nikto_timeout)
+        if result.returncode == -9:
+            observation = {
+                "title": "Nikto timed out",
+                "severity": "low",
+                "score": 0.0,
+                "finding_kind": "observation",
+                "owasp_category": "A05:2021 - Security Misconfiguration",
+                "confidence": "high",
+                "file": target_url,
+                "line_number": None,
+                "description": f"Nikto exceeded the scanner time limit ({nikto_timeout}s) before completing.",
+                "evidence": "nikto_timeout",
+                "tool": "nikto",
+                "raw_json": {"timeout_seconds": nikto_timeout, "mode": mode},
+            }
+            return [observation], tool_state, result.stdout, result.stderr
         if result.returncode != 0:
-            return [], tool_state, result.stdout, result.stderr or "Nikto container execution failed."
+            observation = {
+                "title": "Nikto execution error",
+                "severity": "low",
+                "score": 0.0,
+                "finding_kind": "observation",
+                "owasp_category": "A05:2021 - Security Misconfiguration",
+                "confidence": "medium",
+                "file": target_url,
+                "line_number": None,
+                "description": "Nikto returned an execution error and did not produce complete findings.",
+                "evidence": (result.stderr or result.stdout or "nikto_failed")[:500],
+                "tool": "nikto",
+                "raw_json": {"returncode": result.returncode},
+            }
+            return [observation], tool_state, result.stdout, result.stderr or "Nikto container execution failed."
         if not output_file.exists():
-            return [], tool_state, result.stdout, "Nikto did not produce an output report."
+            observation = {
+                "title": "Nikto report missing",
+                "severity": "low",
+                "score": 0.0,
+                "finding_kind": "observation",
+                "owasp_category": "A05:2021 - Security Misconfiguration",
+                "confidence": "medium",
+                "file": target_url,
+                "line_number": None,
+                "description": "Nikto finished without producing a JSON report file.",
+                "evidence": "nikto_output_missing",
+                "tool": "nikto",
+                "raw_json": {"mode": mode},
+            }
+            return [observation], tool_state, result.stdout, "Nikto did not produce an output report."
         payload = json.loads(output_file.read_text(encoding="utf-8", errors="replace"))
         findings = parse_nikto_output(payload)
         findings = _rewrite_target_reference(findings, target_url, nikto_target)

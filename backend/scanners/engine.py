@@ -114,27 +114,39 @@ def _run_sast(scan_id: int, target: str, source_type: str) -> None:
     stderr_chunks: list[str] = []
     vulnerabilities: list[dict] = []
     try:
-        _set_running(scan_id, 10, tool_status, "Preparing source")
+        # 10% = repo cloned
+        _update_scan(scan_id, progress=5, current_stage="Cloning repository")
         source_dir = prepare_source(workspace, source_type, target)
+        _set_running(scan_id, 10, tool_status, "Repository cloned")
+        
         source_stats = _scan_source_stats(source_dir)
         vulnerabilities.extend(build_sast_observations(source_stats))
         if source_stats.total_supported_files == 0:
             raise RuntimeError("No supported source files were found to scan in the uploaded source.")
-        _set_running(scan_id, 30, tool_status, "Running Semgrep")
+            
+        # 30% = semgrep started, 60% = semgrep running
+        _set_running(scan_id, 30, tool_status, "Semgrep started")
+        
+        # We set it to 60% immediately after starting or right before call since it's the main task
+        _set_running(scan_id, 60, tool_status, "Semgrep running")
         semgrep_findings, semgrep_tool, semgrep_stdout, semgrep_stderr = run_semgrep(source_dir)
+        
         tool_status["semgrep"] = semgrep_tool
         stdout_chunks.append(f"=== semgrep stdout ===\n{semgrep_stdout}")
         stderr_chunks.append(f"=== semgrep stderr ===\n{semgrep_stderr}")
+        
         bandit_findings: list[dict] = []
         if source_stats.python_files:
-            _set_running(scan_id, 60, tool_status, "Running Bandit")
+            _set_running(scan_id, 75, tool_status, "Running Bandit")
             bandit_findings, bandit_tool, bandit_stdout, bandit_stderr = run_bandit(source_dir)
             tool_status["bandit"] = bandit_tool
             stdout_chunks.append(f"=== bandit stdout ===\n{bandit_stdout}")
             stderr_chunks.append(f"=== bandit stderr ===\n{bandit_stderr}")
         else:
             tool_status["bandit"] = {"installed": True, "path": "python-only-skip", "skipped": True}
-        _set_running(scan_id, 85, tool_status, "Finalizing report")
+            
+        # 90% = parsing results
+        _set_running(scan_id, 90, tool_status, "Parsing results")
         vulnerabilities.extend(semgrep_findings + bandit_findings)
         _save_vulnerabilities(scan_id, vulnerabilities)
         real_findings = [item for item in vulnerabilities if item.get("finding_kind") == "vulnerability"]
@@ -177,7 +189,14 @@ def _run_dast(scan_id: int, target: str, scan_mode: str) -> None:
     try:
         _set_running(scan_id, 10, tool_status, "Baseline HTTP analysis")
         http_findings, http_stdout, http_stderr = run_http_baseline(target)
-        tool_status["http-baseline"] = {"installed": True, "path": "builtin", "mode": scan_mode}
+        http_limited = any(item.get("tool") == "http-baseline" and item.get("title", "").startswith("HTTP probe returned status") for item in http_findings)
+        tool_status["http-baseline"] = {
+            "installed": True,
+            "path": "builtin",
+            "mode": scan_mode,
+            "status": "limited" if http_limited else "ok",
+            "note": "Target returned non-2xx status; checks may be partial." if http_limited else None,
+        }
         stdout_chunks.append(f"=== http-baseline stdout ===\n{http_stdout}")
         stderr_chunks.append(f"=== http-baseline stderr ===\n{http_stderr}")
 
@@ -189,13 +208,20 @@ def _run_dast(scan_id: int, target: str, scan_mode: str) -> None:
 
         _set_running(scan_id, 52, tool_status, "Running OWASP web checks")
         owasp_findings, owasp_stdout, owasp_stderr = run_owasp_web_checks(target, scan_mode)
-        tool_status["owasp-web"] = {"installed": True, "path": "builtin", "mode": scan_mode}
+        owasp_limited = any(item.get("tool") == "owasp-web" and item.get("title", "").startswith("OWASP checks ran on HTTP status") for item in owasp_findings)
+        tool_status["owasp-web"] = {
+            "installed": True,
+            "path": "builtin",
+            "mode": scan_mode,
+            "status": "limited" if owasp_limited else "ok",
+            "note": "Target returned non-2xx status; active checks were limited." if owasp_limited else None,
+        }
         stdout_chunks.append(f"=== owasp-web stdout ===\n{owasp_stdout}")
         stderr_chunks.append(f"=== owasp-web stderr ===\n{owasp_stderr}")
 
         _set_running(scan_id, 68, tool_status, "Running Nuclei")
         nuclei_findings, nuclei_tool, nuclei_stdout, nuclei_stderr = run_nuclei(target, scan_mode)
-        tool_status["nuclei"] = nuclei_tool
+        tool_status["nuclei"] = {**nuclei_tool, "status": "ok"}
         stdout_chunks.append(f"=== nuclei stdout ===\n{nuclei_stdout}")
         stderr_chunks.append(f"=== nuclei stderr ===\n{nuclei_stderr}")
 
@@ -205,11 +231,16 @@ def _run_dast(scan_id: int, target: str, scan_mode: str) -> None:
         if scan_mode == "full":
             _set_running(scan_id, 84, tool_status, "Running Nikto")
             nikto_findings, nikto_tool, nikto_stdout, nikto_stderr = run_nikto(target, scan_mode)
-            tool_status["nikto"] = nikto_tool
+            nikto_limited = any(item.get("tool") == "nikto" and item.get("finding_kind") == "observation" for item in nikto_findings)
+            tool_status["nikto"] = {
+                **nikto_tool,
+                "status": "limited" if nikto_limited else "ok",
+                "note": "Nikto completed with limited data or timeout." if nikto_limited else None,
+            }
             stdout_chunks.append(f"=== nikto stdout ===\n{nikto_stdout}")
             stderr_chunks.append(f"=== nikto stderr ===\n{nikto_stderr}")
         else:
-            tool_status["nikto"] = {"installed": False, "path": None, "mode": "quick-scan-skipped"}
+            tool_status["nikto"] = {"installed": False, "path": None, "mode": "quick-scan-skipped", "status": "skipped"}
 
         _set_running(scan_id, 94, tool_status, "Building report")
         vulnerabilities = enrich_with_owasp(http_findings + owasp_findings + nuclei_findings + nikto_findings + nmap_findings)
