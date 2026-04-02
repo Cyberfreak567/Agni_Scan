@@ -1,0 +1,15 @@
+.git
+.gitignore
+.vscode
+.env
+.env.local
+.venv
+backend/.venv
+backend/data
+backend/database.db
+frontend/node_modules
+frontend/dist
+frontend/.env.local
+*.log
+*.db
+tools
