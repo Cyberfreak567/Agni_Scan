@@ -22,7 +22,7 @@ RUN git clone --depth 1 https://github.com/sullo/nikto.git /opt/nikto \
 # Install nuclei (reliable download with retries)
 RUN mkdir -p /opt/nuclei \
     && curl -L --retry 5 --retry-delay 2 --fail \
-      https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_2.10.4_linux_amd64.zip \
+      https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei-linux-amd64.zip \
       -o /tmp/nuclei.zip \
     && unzip -q /tmp/nuclei.zip -d /opt/nuclei \
     && mv /opt/nuclei/nuclei /usr/local/bin/nuclei \
