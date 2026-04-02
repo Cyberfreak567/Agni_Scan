@@ -40,6 +40,13 @@ def _decode_output(raw: bytes | None) -> str:
 def _common_tool_candidates(binary: str) -> list[Path]:
     exe_name = f"{binary}.exe"
     candidates: list[Path] = []
+    if binary == "nikto":
+        candidates.extend(
+            [
+                Path("/usr/local/bin/nikto"),
+                Path("/opt/nikto/program/nikto.pl"),
+            ]
+        )
     if binary == "docker":
         candidates.extend(
             [
