@@ -19,10 +19,11 @@ RUN git clone --depth 1 https://github.com/sullo/nikto.git /opt/nikto \
     && printf '#!/bin/sh\nexec perl /opt/nikto/program/nikto.pl "$@"\n' > /usr/local/bin/nikto \
     && chmod +x /usr/local/bin/nikto
 
-# Install nuclei (reliable download with retries)
+# Install nuclei (stable mirror + retries)
+ARG NUCLEI_VERSION=3.6.2
 RUN mkdir -p /opt/nuclei \
     && curl -L --retry 5 --retry-delay 2 --fail \
-      https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei-linux-amd64.zip \
+      "https://sourceforge.net/projects/nuclei.mirror/files/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_amd64.zip/download" \
       -o /tmp/nuclei.zip \
     && unzip -q /tmp/nuclei.zip -d /opt/nuclei \
     && mv /opt/nuclei/nuclei /usr/local/bin/nuclei \
