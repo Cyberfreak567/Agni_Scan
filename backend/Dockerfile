@@ -7,11 +7,16 @@ ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     nmap \
-    nikto \
     wget \
     unzip \
     ca-certificates \
+    perl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Nikto (not available as a package on all Debian variants)
+RUN git clone --depth 1 https://github.com/sullo/nikto.git /opt/nikto \
+    && printf '#!/bin/sh\nexec perl /opt/nikto/program/nikto.pl "$@"\n' > /usr/local/bin/nikto \
+    && chmod +x /usr/local/bin/nikto
 
 # Install nuclei
 RUN mkdir -p /opt/nuclei \
