@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     ca-certificates \
     perl \
+    libjson-perl \
+    libxml-writer-perl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Nikto (not available as a package on all Debian variants)
