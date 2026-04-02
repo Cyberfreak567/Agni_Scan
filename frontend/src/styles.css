@@ -104,6 +104,21 @@ select {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
+select {
+  background-color: rgba(12, 20, 28, 0.9);
+  color: var(--ink);
+}
+
+select option {
+  background-color: #0f1822;
+  color: var(--ink);
+}
+
+select option:checked {
+  background-color: #ffb347;
+  color: #111318;
+}
+
 input::placeholder {
   color: rgba(244, 241, 234, 0.38);
 }
