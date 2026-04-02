@@ -1,5 +1,6 @@
 fastapi==0.116.1
 uvicorn[standard]==0.35.0
 python-multipart==0.0.20
+setuptools==75.6.0
 bandit==1.8.6
 semgrep==1.130.0
