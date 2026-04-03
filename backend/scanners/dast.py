@@ -9,7 +9,14 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from ..parsers.dast import infer_owasp, parse_nikto_output, parse_nmap_output, parse_nuclei_output, score_from_severity
+from ..parsers.dast import (
+    infer_owasp,
+    parse_nikto_output,
+    parse_nikto_text,
+    parse_nmap_output,
+    parse_nuclei_output,
+    score_from_severity,
+)
 from .base import build_tool_command, resolve_tool, run_command, verify_tool
 
 CUSTOM_NUCLEI_TEMPLATES = Path(__file__).resolve().parent / "nuclei_templates"
@@ -512,6 +519,7 @@ def run_nikto(target_url: str, mode: str) -> tuple[list[dict], dict, str, str]:
         output_file = Path(temp_dir) / "nikto.json"
         tuning = "123bde" if mode == "quick" else "1234567890abcde"
         nikto_target = target_url
+        use_https = nikto_target.startswith("https://")
         command = build_tool_command(
             "nikto",
             "-h",
@@ -527,6 +535,8 @@ def run_nikto(target_url: str, mode: str) -> tuple[list[dict], dict, str, str]:
             "-output",
             str(output_file),
         )
+        if use_https:
+            command.append("-ssl")
         nikto_timeout = 420 if mode == "quick" else 900
         result = run_command(command, timeout=nikto_timeout)
         if result.returncode == -9:
@@ -546,41 +556,102 @@ def run_nikto(target_url: str, mode: str) -> tuple[list[dict], dict, str, str]:
             }
             return [observation], tool_state, result.stdout, result.stderr
         if result.returncode != 0:
-            observation = {
-                "title": "Nikto execution error",
-                "severity": "low",
-                "score": 0.0,
-                "finding_kind": "observation",
-                "owasp_category": "A05:2021 - Security Misconfiguration",
-                "confidence": "medium",
-                "file": target_url,
-                "line_number": None,
-                "description": "Nikto returned an execution error and did not produce complete findings.",
-                "evidence": (result.stderr or result.stdout or "nikto_failed")[:500],
-                "tool": "nikto",
-                "raw_json": {"returncode": result.returncode},
-            }
-            return [observation], tool_state, result.stdout, result.stderr or "Nikto container execution failed."
+            return _nikto_fallback(
+                target_url=target_url,
+                nikto_target=nikto_target,
+                tuning=tuning,
+                timeout=nikto_timeout,
+                tool_state=tool_state,
+                stderr=result.stderr,
+                stdout=result.stdout,
+                reason=f"returncode_{result.returncode}",
+                temp_dir=Path(temp_dir),
+            )
         if not output_file.exists():
-            observation = {
-                "title": "Nikto report missing",
-                "severity": "low",
-                "score": 0.0,
-                "finding_kind": "observation",
-                "owasp_category": "A05:2021 - Security Misconfiguration",
-                "confidence": "medium",
-                "file": target_url,
-                "line_number": None,
-                "description": "Nikto finished without producing a JSON report file.",
-                "evidence": "nikto_output_missing",
-                "tool": "nikto",
-                "raw_json": {"mode": mode},
-            }
-            return [observation], tool_state, result.stdout, "Nikto did not produce an output report."
-        payload = json.loads(output_file.read_text(encoding="utf-8", errors="replace"))
+            return _nikto_fallback(
+                target_url=target_url,
+                nikto_target=nikto_target,
+                tuning=tuning,
+                timeout=nikto_timeout,
+                tool_state=tool_state,
+                stderr=result.stderr,
+                stdout=result.stdout,
+                reason="json_output_missing",
+                temp_dir=Path(temp_dir),
+            )
+        try:
+            payload = json.loads(output_file.read_text(encoding="utf-8", errors="replace"))
+        except json.JSONDecodeError:
+            return _nikto_fallback(
+                target_url=target_url,
+                nikto_target=nikto_target,
+                tuning=tuning,
+                timeout=nikto_timeout,
+                tool_state=tool_state,
+                stderr=result.stderr,
+                stdout=result.stdout,
+                reason="json_parse_error",
+                temp_dir=Path(temp_dir),
+            )
         findings = parse_nikto_output(payload)
+        if not findings:
+            findings = parse_nikto_text(output_file.read_text(encoding="utf-8", errors="replace"), target_url)
         findings = _rewrite_target_reference(findings, target_url, nikto_target)
         return findings, tool_state, json.dumps(payload, ensure_ascii=True), result.stderr
+
+
+def _nikto_fallback(
+    *,
+    target_url: str,
+    nikto_target: str,
+    tuning: str,
+    timeout: int,
+    tool_state: dict,
+    stderr: str,
+    stdout: str,
+    reason: str,
+    temp_dir: Path,
+) -> tuple[list[dict], dict, str, str]:
+    fallback_file = temp_dir / "nikto.txt"
+    fallback_command = build_tool_command(
+        "nikto",
+        "-h",
+        nikto_target,
+        "-ask",
+        "no",
+        "-Format",
+        "txt",
+        "-Tuning",
+        tuning,
+        "-timeout",
+        "15",
+        "-output",
+        str(fallback_file),
+    )
+    if nikto_target.startswith("https://"):
+        fallback_command.append("-ssl")
+    fallback_result = run_command(fallback_command, timeout=timeout)
+    evidence_text = ""
+    if fallback_file.exists():
+        evidence_text = fallback_file.read_text(encoding="utf-8", errors="replace")[:2000]
+    findings = parse_nikto_text(evidence_text, target_url)
+    if findings:
+        return findings, tool_state, fallback_result.stdout, fallback_result.stderr or stderr
+    observation = {
+        "title": "Nikto execution error",
+        "severity": "low",
+        "score": 0.0,
+        "finding_kind": "observation",
+        "owasp_category": "A05:2021 - Security Misconfiguration",
+        "confidence": "medium",
+        "file": target_url,
+        "line_number": None,
+        "description": "Nikto returned an execution error and did not produce JSON output. Fallback text output captured.",
+        "evidence": evidence_text or (stderr or stdout or "nikto_failed")[:500],
+        "tool": "nikto",
+        "raw_json": {"reason": reason, "fallback_returncode": fallback_result.returncode},
+    }
+    return [observation], tool_state, fallback_result.stdout, fallback_result.stderr or stderr
 
 
 def enrich_with_owasp(findings: list[dict]) -> list[dict]:

@@ -191,3 +191,39 @@ def parse_nikto_output(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 }
             )
     return findings
+
+
+def parse_nikto_text(raw_text: str, target: str | None = None) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    if not raw_text:
+        return findings
+    for raw_line in raw_text.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("+"):
+            continue
+        message = line.lstrip("+").strip()
+        if not message or message.lower().startswith(("target ip", "target hostname", "start time", "end time")):
+            continue
+        severity = "low"
+        lowered = message.lower()
+        if any(token in lowered for token in ("xss", "sql", "injection", "rce", "command execution", "shell")):
+            severity = "high"
+        elif any(token in lowered for token in ("directory listing", "admin", "login", "password", "exposed", "header")):
+            severity = "medium"
+        findings.append(
+            {
+                "title": "Nikto finding",
+                "severity": severity,
+                "score": score_from_severity(severity),
+                "finding_kind": "vulnerability",
+                "owasp_category": infer_owasp(message, target or ""),
+                "confidence": "low",
+                "file": target or "",
+                "line_number": None,
+                "description": message,
+                "evidence": message[:500],
+                "tool": "nikto",
+                "raw_json": {"line": message},
+            }
+        )
+    return findings
