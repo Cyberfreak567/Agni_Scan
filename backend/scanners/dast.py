@@ -124,11 +124,11 @@ def _nikto_target(target_url: str) -> str:
 
 
 def verify_nikto() -> dict:
-    docker_path = resolve_tool("docker")
+    nikto_path = resolve_tool("nikto")
     return {
-        "installed": bool(docker_path),
-        "path": docker_path,
-        "mode": "docker-container" if docker_path else "unavailable",
+        "installed": bool(nikto_path),
+        "path": nikto_path,
+        "mode": "local-binary" if nikto_path else "unavailable",
     }
 
 
@@ -501,25 +501,19 @@ def run_nikto(target_url: str, mode: str) -> tuple[list[dict], dict, str, str]:
             "confidence": "high",
             "file": target_url,
             "line_number": None,
-            "description": "Nikto was skipped because Docker is not available on this host.",
-            "evidence": "docker binary not detected",
+            "description": "Nikto was skipped because it is not installed on this host.",
+            "evidence": "nikto binary not detected",
             "tool": "nikto",
-            "raw_json": {"reason": "docker_not_available"},
+            "raw_json": {"reason": "nikto_not_available"},
         }
-        return [observation], tool_state, "", "Nikto skipped because Docker is not available."
+        return [observation], tool_state, "", "Nikto skipped because binary is not available."
 
-    DOCKER_CONFIG.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent.parent / "data") as temp_dir:
         output_file = Path(temp_dir) / "nikto.json"
         tuning = "123bde" if mode == "quick" else "1234567890abcde"
-        nikto_target = _nikto_target(target_url)
+        nikto_target = target_url
         command = build_tool_command(
-            "docker",
-            "run",
-            "--rm",
-            "-v",
-            f"{temp_dir}:/out",
-            "ghcr.io/sullo/nikto:latest",
+            "nikto",
             "-h",
             nikto_target,
             "-ask",
@@ -530,11 +524,11 @@ def run_nikto(target_url: str, mode: str) -> tuple[list[dict], dict, str, str]:
             tuning,
             "-timeout",
             "15",
-            "-o",
-            "/out/nikto.json",
+            "-output",
+            str(output_file),
         )
         nikto_timeout = 420 if mode == "quick" else 900
-        result = run_command(command, env={"DOCKER_CONFIG": str(DOCKER_CONFIG)}, timeout=nikto_timeout)
+        result = run_command(command, timeout=nikto_timeout)
         if result.returncode == -9:
             observation = {
                 "title": "Nikto timed out",
