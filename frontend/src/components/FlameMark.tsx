@@ -1,4 +1,8 @@
-export function FlameMark({ compact = false }) {
+interface FlameMarkProps {
+  compact?: boolean;
+}
+
+export function FlameMark({ compact = false }: FlameMarkProps) {
   return (
     <div className={`brand-mark ${compact ? "compact" : ""}`} aria-hidden="true">
       <div className="brand-fire-aura" />

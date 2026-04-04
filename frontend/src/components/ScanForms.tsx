@@ -2,22 +2,28 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "../lib/api";
 
-function normalizeUrlInput(value) {
+function normalizeUrlInput(value: string) {
   return value.trim().split(/\s+/)[0] || "";
 }
 
 const cardTransition = { duration: 0.55, ease: [0.22, 1, 0.36, 1] };
 
-export function ScanForms({ onCreated }) {
-  const [repoUrl, setRepoUrl] = useState("");
-  const [zipFile, setZipFile] = useState(null);
-  const [targetUrl, setTargetUrl] = useState("");
-  const [dastMode, setDastMode] = useState("full");
-  const [message, setMessage] = useState("");
+interface ScanFormsProps {
+  onCreated: () => void;
+}
 
-  async function submitSast(event) {
+export function ScanForms({ onCreated }: ScanFormsProps) {
+  const [repoUrl, setRepoUrl] = useState("");
+  const [zipFile, setZipFile] = useState<File | null>(null);
+  const [targetUrl, setTargetUrl] = useState("");
+  const [dastMode, setDastMode] = useState<"full" | "quick">("full");
+  const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitSast(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
+    setSubmitting(true);
     try {
       const formData = new FormData();
       if (repoUrl) {
@@ -32,13 +38,16 @@ export function ScanForms({ onCreated }) {
       setMessage("SAST scan queued successfully.");
       onCreated();
     } catch (err) {
-      setMessage(err.message);
+      setMessage(err instanceof Error ? err.message : "Unable to start SAST scan.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  async function submitDast(event) {
+  async function submitDast(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
+    setSubmitting(true);
     try {
       await api("/api/scans/dast", {
         method: "POST",
@@ -48,7 +57,9 @@ export function ScanForms({ onCreated }) {
       setMessage(`DAST ${dastMode} scan queued successfully.`);
       onCreated();
     } catch (err) {
-      setMessage(err.message);
+      setMessage(err instanceof Error ? err.message : "Unable to start DAST scan.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -78,7 +89,7 @@ export function ScanForms({ onCreated }) {
           ZIP upload
           <input type="file" accept=".zip" onChange={(event) => setZipFile(event.target.files?.[0] || null)} />
         </label>
-        <button>Launch SAST Scan</button>
+        <button disabled={submitting}>{submitting ? "Launching..." : "Launch SAST Scan"}</button>
       </motion.form>
       <motion.form
         className="panel mission-panel"
@@ -91,7 +102,7 @@ export function ScanForms({ onCreated }) {
         <p className="section-copy">Probe a live target with OWASP-focused web checks, Nuclei, Nmap, and optional Nikto. The target must be HTTP or HTTPS.</p>
         <label>
           Scan mode
-          <select value={dastMode} onChange={(event) => setDastMode(event.target.value)}>
+          <select value={dastMode} onChange={(event) => setDastMode(event.target.value as "full" | "quick")}>
             <option value="full">Full scan</option>
             <option value="quick">Quick scan</option>
           </select>
@@ -107,7 +118,7 @@ export function ScanForms({ onCreated }) {
             placeholder="https://example.com"
           />
         </label>
-        <button>Launch DAST Scan</button>
+        <button disabled={submitting}>{submitting ? "Launching..." : "Launch DAST Scan"}</button>
       </motion.form>
       {message && (
         <motion.div

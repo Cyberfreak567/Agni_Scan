@@ -10,7 +10,7 @@ function App() {
   return session.token ? <Dashboard /> : <AuthForm onAuthenticated={() => window.location.reload()} />;
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>

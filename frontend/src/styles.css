@@ -534,6 +534,123 @@ h2 {
   gap: 6px;
 }
 
+.report-actions-ready button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.report-actions .icon {
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(15, 20, 30, 0.7);
+  color: #f5d4a4;
+}
+
+.scan-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.status-pill.pending {
+  background: rgba(255, 206, 86, 0.18);
+  color: #ffd66e;
+}
+
+.status-pill.running {
+  background: rgba(86, 180, 255, 0.2);
+  color: #7fceff;
+}
+
+.status-pill.completed {
+  background: rgba(72, 198, 131, 0.2);
+  color: #7de6a4;
+}
+
+.status-pill.failed {
+  background: rgba(255, 99, 132, 0.2);
+  color: #ff8aa5;
+}
+
+.progress-bar.completed {
+  background: linear-gradient(90deg, #60d394, #9be7c4);
+  box-shadow: 0 8px 20px rgba(84, 214, 146, 0.35);
+}
+
+.progress-bar.failed {
+  background: linear-gradient(90deg, #ff6b6b, #ffa8a8);
+  box-shadow: 0 8px 20px rgba(255, 107, 107, 0.3);
+}
+
+.status-banner.subtle {
+  background: rgba(10, 16, 28, 0.6);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #b9c5d9;
+}
+
+.filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin: 16px 0 12px;
+}
+
+.filter-bar label {
+  display: block;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.filter-bar input,
+.filter-bar select {
+  width: 100%;
+}
+
+.search-field input {
+  background: rgba(12, 20, 32, 0.7);
+}
+
+.scan-skeleton {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(12, 18, 32, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid;
+  gap: 10px;
+}
+
+.skeleton-line {
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08));
+  background-size: 200% 200%;
+  animation: shimmer 1.6s infinite;
+}
+
+.skeleton-line.short {
+  width: 65%;
+}
+
+@keyframes shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
 .hero-image-shell {
   position: relative;
   width: min(100%, 290px);

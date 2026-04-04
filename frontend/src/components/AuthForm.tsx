@@ -18,13 +18,25 @@ const riseIn = {
   show: { opacity: 1, y: 0, transition: shellTransition },
 };
 
-export function AuthForm({ onAuthenticated }) {
-  const [mode, setMode] = useState("login");
-  const [form, setForm] = useState({ username: "", password: "", role: "user" });
+interface AuthFormProps {
+  onAuthenticated: () => void;
+}
+
+type AuthMode = "login" | "register";
+
+interface AuthState {
+  username: string;
+  password: string;
+  role: "user" | "admin";
+}
+
+export function AuthForm({ onAuthenticated }: AuthFormProps) {
+  const [mode, setMode] = useState<AuthMode>("login");
+  const [form, setForm] = useState<AuthState>({ username: "", password: "", role: "user" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function submit(event) {
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setLoading(true);
@@ -33,14 +45,18 @@ export function AuthForm({ onAuthenticated }) {
         mode === "login"
           ? { username: form.username, password: form.password }
           : { username: form.username, password: form.password, role: form.role };
-      const data = await api(`/api/auth/${mode}`, {
+      const data = await api<{ token: string; username: string; role: string }>(`/api/auth/${mode}`, {
         method: "POST",
         body: JSON.stringify(payload),
       });
       setSession(data.token, data.username, data.role);
       onAuthenticated();
     } catch (err) {
-      setError(err.message);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Unable to authenticate right now.");
+      }
     } finally {
       setLoading(false);
     }
@@ -97,7 +113,7 @@ export function AuthForm({ onAuthenticated }) {
           {mode === "register" && (
             <motion.label variants={riseIn}>
               Role
-              <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })}>
+              <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as AuthState["role"] })}>
                 <option value="user">User</option>
                 <option value="admin">Admin</option>
               </select>
