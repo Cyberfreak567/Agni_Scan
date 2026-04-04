@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { api, clearSession, downloadReport, getSession } from "../lib/api";
+import { UI_VERSION } from "../lib/version";
 import { ScanForms } from "./ScanForms";
 import { FlameMark } from "./FlameMark";
 
@@ -631,6 +632,10 @@ export function Dashboard() {
       <motion.main className="page-shell" initial="hidden" animate="show" variants={stagger}>
         <ViewPanel />
       </motion.main>
+
+      <footer className="app-footer">
+        <span>{UI_VERSION}</span>
+      </footer>
     </div>
   );
 }
