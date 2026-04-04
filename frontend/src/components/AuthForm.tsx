@@ -65,7 +65,7 @@ export function AuthForm({ onAuthenticated }: AuthFormProps) {
   return (
     <div className="auth-shell">
       <motion.div
-        className="auth-panel"
+        className="glass-panel auth-panel"
         initial={{ opacity: 0, y: 28, rotateX: 8 }}
         animate={{ opacity: 1, y: 0, rotateX: 0 }}
         transition={shellTransition}
@@ -88,7 +88,7 @@ export function AuthForm({ onAuthenticated }: AuthFormProps) {
         </div>
         <motion.form
           onSubmit={submit}
-          className="auth-form"
+          className="auth-form space-y-4"
           variants={staggerParent}
           initial="hidden"
           animate="show"
@@ -96,6 +96,7 @@ export function AuthForm({ onAuthenticated }: AuthFormProps) {
           <motion.label variants={riseIn}>
             Username
             <input
+              className="input-field"
               value={form.username}
               onChange={(event) => setForm({ ...form, username: event.target.value })}
               placeholder="analyst_admin"
@@ -105,6 +106,7 @@ export function AuthForm({ onAuthenticated }: AuthFormProps) {
             Password
             <input
               type="password"
+              className="input-field"
               value={form.password}
               onChange={(event) => setForm({ ...form, password: event.target.value })}
               placeholder="Minimum 8 characters"
@@ -113,14 +115,22 @@ export function AuthForm({ onAuthenticated }: AuthFormProps) {
           {mode === "register" && (
             <motion.label variants={riseIn}>
               Role
-              <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as AuthState["role"] })}>
+              <select
+                className="input-field"
+                value={form.role}
+                onChange={(event) => setForm({ ...form, role: event.target.value as AuthState["role"] })}
+              >
                 <option value="user">User</option>
                 <option value="admin">Admin</option>
               </select>
             </motion.label>
           )}
-          {error && <motion.div variants={riseIn} className="error-banner">{error}</motion.div>}
-          <motion.button variants={riseIn} disabled={loading}>
+          {error && (
+            <motion.div variants={riseIn} className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              {error}
+            </motion.div>
+          )}
+          <motion.button variants={riseIn} className="btn-primary w-full" disabled={loading}>
             {loading ? "Working..." : mode === "login" ? "Login" : "Register"}
           </motion.button>
         </motion.form>
@@ -131,7 +141,7 @@ export function AuthForm({ onAuthenticated }: AuthFormProps) {
           transition={{ delay: 0.28 }}
         >
           <span>{mode === "login" ? "Need an account?" : "Already registered?"}</span>
-          <button type="button" className="ghost-button" onClick={() => setMode(mode === "login" ? "register" : "login")}>
+          <button type="button" className="btn-ghost" onClick={() => setMode(mode === "login" ? "register" : "login")}>
             {mode === "login" ? "Register" : "Login"}
           </button>
         </motion.div>

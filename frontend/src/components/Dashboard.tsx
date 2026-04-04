@@ -1,691 +1,710 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  ArrowDownTrayIcon,
+  ArrowPathIcon,
+  BoltIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  FunnelIcon,
+  MagnifyingGlassIcon,
+  ShieldCheckIcon,
+  TrashIcon,
+} from "@heroicons/react/24/outline";
+
 import { api, clearSession, downloadReport, getSession } from "../lib/api";
-import { UI_VERSION } from "../lib/version";
-import { ScanForms } from "./ScanForms";
 import { FlameMark } from "./FlameMark";
+import { Charts } from "./Charts";
+import type { Finding, ScanRecord, ScanSummary, ToolStatus } from "./types";
+import { Modal } from "./ui/Modal";
+import { Spinner } from "./ui/Spinner";
+import { Toast, type ToastMessage } from "./ui/Toast";
+import { ScanForms } from "./ScanForms";
 
-type ScanStatus = "pending" | "running" | "completed" | "failed";
-type ScanType = "sast" | "dast";
+type ViewKey = "overview" | "scans" | "findings" | "docs";
 
-interface ToolStatus {
-  installed: boolean;
-  path?: string | null;
-  mode?: string;
-}
-
-interface ScanSummary {
-  total_scans?: number;
-  completed_scans?: number;
-  failed_scans?: number;
-  total_vulnerabilities?: number;
-  total_observations?: number;
-  severity_distribution?: Record<string, number>;
-  owasp_top_10?: Record<string, number>;
-  note?: string;
-}
-
-interface Finding {
-  id: number;
-  title: string;
-  severity: string;
-  score?: number;
-  confidence?: string;
-  finding_kind?: string;
-  owasp_category?: string;
-  file?: string;
-  description?: string;
-  evidence?: string;
-  tool?: string;
-}
-
-interface ScanRecord {
-  id: number;
-  scan_type: ScanType;
-  scan_mode?: string | null;
-  target: string;
-  status: ScanStatus;
-  progress: number;
-  current_stage?: string | null;
-  error_message?: string | null;
-  stderr_log?: string | null;
-  stdout_log?: string | null;
-  summary?: ScanSummary;
-  vulnerabilities?: Finding[];
-}
-
-const reveal = {
-  hidden: { opacity: 0, y: 24 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.58, ease: [0.22, 1, 0.36, 1] } },
+const viewLabels: Record<ViewKey, string> = {
+  overview: "Overview",
+  scans: "Scans",
+  findings: "Findings",
+  docs: "Docs",
 };
 
-const stagger = {
-  hidden: {},
-  show: {
-    transition: {
-      staggerChildren: 0.08,
-      delayChildren: 0.06,
-    },
-  },
-};
+const severityOrder = ["critical", "high", "medium", "low", "info"] as const;
 
-const severityRank: Record<string, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-  info: 4,
-};
-
-function severityColor(severity: string | undefined) {
-  return {
-    critical: "pill critical",
-    high: "pill high",
-    medium: "pill medium",
-    low: "pill low",
-    info: "pill info",
-  }[severity || ""] || "pill";
+function formatWhen(value?: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
 }
 
-function statusLabel(status: ScanStatus) {
-  return {
-    pending: "Queued",
-    running: "Running",
-    completed: "Completed",
-    failed: "Failed",
-  }[status];
+function normalizeSeverity(value?: string | null) {
+  if (!value) return "info";
+  return value.toLowerCase();
 }
 
-function groupFindings(items: Finding[] = []) {
-  return {
-    vulnerabilities: items.filter((item) => item.finding_kind === "vulnerability"),
-    observations: items.filter((item) => item.finding_kind !== "vulnerability"),
-  };
-}
+function useHashRoute() {
+  const [view, setView] = useState<ViewKey>(() => {
+    const hash = window.location.hash.replace("#/", "");
+    if (hash === "scans" || hash === "findings" || hash === "docs") return hash;
+    return "overview";
+  });
 
-function getSuggestedFixes(item: Finding) {
-  const suggestions: string[] = [];
-  const owasp = (item.owasp_category || "").toLowerCase();
-  const tool = (item.tool || "").toLowerCase();
+  useEffect(() => {
+    const handler = () => {
+      const hash = window.location.hash.replace("#/", "");
+      if (hash === "scans" || hash === "findings" || hash === "docs") {
+        setView(hash);
+      } else {
+        setView("overview");
+      }
+    };
+    window.addEventListener("hashchange", handler);
+    return () => window.removeEventListener("hashchange", handler);
+  }, []);
 
-  if (owasp.includes("broken access")) {
-    suggestions.push("Enforce authorization checks on the server for every sensitive action.");
-    suggestions.push("Add unit tests for role-based permissions to prevent regressions.");
-  }
-  if (owasp.includes("cryptographic")) {
-    suggestions.push("Force HTTPS and enable HSTS with a long max-age.");
-    suggestions.push("Ensure cookies are marked Secure and HttpOnly.");
-  }
-  if (owasp.includes("injection")) {
-    suggestions.push("Use parameterized queries or ORM-safe APIs to eliminate string concatenation.");
-    suggestions.push("Add input validation and logging for unexpected payloads.");
-  }
-  if (owasp.includes("security misconfiguration")) {
-    suggestions.push("Harden server headers (CSP, X-Frame-Options, X-Content-Type-Options).");
-    suggestions.push("Disable directory listing and remove default debug endpoints.");
-  }
-  if (tool.includes("semgrep") || tool.includes("bandit")) {
-    suggestions.push("Refactor the flagged code path and add a regression test.");
-  }
-  if (tool.includes("nuclei") || tool.includes("nikto")) {
-    suggestions.push("Verify the finding manually and patch the vulnerable endpoint.");
-  }
-  if (tool.includes("nmap")) {
-    suggestions.push("Close unused ports or restrict access with security groups/firewall rules.");
-  }
+  const navigate = useCallback((next: ViewKey) => {
+    window.location.hash = `/${next}`;
+    setView(next);
+  }, []);
 
-  if (!suggestions.length) {
-    suggestions.push("Validate the issue and implement the recommended mitigation.");
-  }
-  return suggestions.slice(0, 3);
+  return { view, navigate };
 }
 
 export function Dashboard() {
-  const session = getSession();
-  const [summary, setSummary] = useState<ScanSummary | null>(null);
-  const [scans, setScans] = useState<ScanRecord[]>([]);
-  const [selectedScan, setSelectedScan] = useState<ScanRecord | null>(null);
+  const { view, navigate } = useHashRoute();
+  const { username, role } = getSession();
+
   const [tools, setTools] = useState<Record<string, ToolStatus>>({});
-  const [error, setError] = useState("");
+  const [scans, setScans] = useState<ScanRecord[]>([]);
+  const [summary, setSummary] = useState<ScanSummary | null>(null);
+  const [activeScanId, setActiveScanId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState("overview");
-  const [severityFilter, setSeverityFilter] = useState("all");
-  const [toolFilter, setToolFilter] = useState("all");
-  const [searchText, setSearchText] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(false);
-  const [autoRefreshLocked, setAutoRefreshLocked] = useState(false);
-  const pollingRef = useRef<number | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
 
-  async function refresh(source: "auto" | "manual" = "auto") {
-    try {
-      const [scanData, toolData] = await Promise.all([
-        api<ScanRecord[]>("/api/scans"),
-        api<Record<string, ToolStatus>>("/api/scans/tools"),
-      ]);
-      setScans((prev) => {
-        if (
-          prev.length === scanData.length &&
-          prev.every(
-            (scan, idx) =>
-              scan.id === scanData[idx]?.id &&
-              scan.status === scanData[idx]?.status &&
-              scan.progress === scanData[idx]?.progress &&
-              scan.current_stage === scanData[idx]?.current_stage
-          )
-        ) {
-          return prev;
-        }
-        return scanData;
-      });
-      setTools((prev) => {
-        const prevKeys = Object.keys(prev);
-        const nextKeys = Object.keys(toolData);
-        if (
-          prevKeys.length === nextKeys.length &&
-          prevKeys.every((key) => prev[key]?.installed === toolData[key]?.installed && prev[key]?.mode === toolData[key]?.mode)
-        ) {
-          return prev;
-        }
-        return toolData;
-      });
-      if (scanData.length > 0) {
-        const active = selectedScan ? scanData.find((item) => item.id === selectedScan.id) : scanData[0];
-        if (!selectedScan || active?.id !== selectedScan.id) {
-          setSelectedScan(active || scanData[0]);
-        } else if (active) {
-          setSelectedScan(active);
-        }
-      } else {
-        setSelectedScan(null);
-      }
-      if (session.role === "admin") {
-        const summaryData = await api<ScanSummary>("/api/scans/admin/summary");
-        setSummary(summaryData);
-      }
-      setError("");
-      if (source === "manual") {
-        setLastUpdated(new Date());
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to refresh data.");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [severityFilter, setSeverityFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
-  async function deleteScan(scanId: number) {
-    const confirmed = window.confirm(`Delete scan #${scanId}? This will remove its findings and reports.`);
-    if (!confirmed) {
-      return;
+  const previousStatuses = useRef<Map<number, string>>(new Map());
+
+  const scansInProgress = useMemo(
+    () => scans.some((scan) => scan.status === "pending" || scan.status === "running"),
+    [scans]
+  );
+
+  const activeScan = useMemo(
+    () => scans.find((scan) => scan.id === activeScanId) ?? scans[0] ?? null,
+    [activeScanId, scans]
+  );
+
+  const findings = activeScan?.vulnerabilities ?? [];
+
+  const sources = useMemo(() => {
+    const bucket = new Set<string>();
+    findings.forEach((item) => {
+      if (item.tool) bucket.add(item.tool);
+    });
+    return Array.from(bucket).sort((a, b) => a.localeCompare(b));
+  }, [findings]);
+
+  const filteredFindings = useMemo(() => {
+    const query = debouncedSearch.trim().toLowerCase();
+    return findings.filter((item) => {
+      if (severityFilter !== "all" && normalizeSeverity(item.severity) !== severityFilter) {
+        return false;
+      }
+      if (sourceFilter !== "all" && item.tool !== sourceFilter) {
+        return false;
+      }
+      if (!query) return true;
+      const hay = `${item.title} ${item.description ?? ""} ${item.file ?? ""} ${item.tool ?? ""}`.toLowerCase();
+      return hay.includes(query);
+    });
+  }, [findings, severityFilter, sourceFilter, debouncedSearch]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedSearch(search), 250);
+    return () => window.clearTimeout(handle);
+  }, [search]);
+
+  const addToast = useCallback((toast: Omit<ToastMessage, "id">) => {
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { ...toast, id }]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((item) => item.id !== id));
+    }, 4200);
+  }, []);
+
+  const fetchData = useCallback(
+    async (opts: { silent?: boolean } = {}) => {
+      const silent = opts.silent ?? false;
+      if (!silent) {
+        setRefreshing(true);
+      }
+      setError(null);
+      try {
+        const [toolsData, scansData] = await Promise.all([
+          api<Record<string, ToolStatus>>("/api/scans/tools"),
+          api<ScanRecord[]>("/api/scans"),
+        ]);
+
+        setTools((prev) => (JSON.stringify(prev) === JSON.stringify(toolsData) ? prev : toolsData));
+        setScans((prev) => (JSON.stringify(prev) === JSON.stringify(scansData) ? prev : scansData));
+        if (role === "admin") {
+          const summaryData = await api<ScanSummary>("/api/scans/admin/summary");
+          setSummary(summaryData);
+        } else {
+          setSummary(null);
+        }
+
+        if (!silent) {
+          setLastUpdated(new Date());
+        }
+
+        const statusMap = new Map<number, string>();
+        scansData.forEach((scan) => statusMap.set(scan.id, scan.status));
+        const prevMap = previousStatuses.current;
+        scansData.forEach((scan) => {
+          const before = prevMap.get(scan.id);
+          if (before && before !== scan.status) {
+            if (scan.status === "completed") {
+              addToast({ type: "success", message: `Scan #${scan.id} completed.` });
+            }
+            if (scan.status === "failed") {
+              addToast({ type: "error", message: `Scan #${scan.id} failed.` });
+            }
+          }
+        });
+        previousStatuses.current = statusMap;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to refresh data.");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [addToast, role]
+  );
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    if (!autoRefresh || !scansInProgress) return;
+    if (view !== "scans" && view !== "findings") return;
+    const handle = window.setInterval(() => {
+      fetchData({ silent: true });
+    }, 40000);
+    return () => window.clearInterval(handle);
+  }, [autoRefresh, scansInProgress, view, fetchData]);
+
+  useEffect(() => {
+    if (scansInProgress) {
+      setAutoRefresh(true);
     }
+  }, [scansInProgress]);
+
+  useEffect(() => {
+    if (activeScanId === null && scans[0]) {
+      setActiveScanId(scans[0].id);
+    }
+  }, [activeScanId, scans]);
+
+  const severityCount = useMemo(() => {
+    const bucket: Record<string, number> = {};
+    findings.forEach((item) => {
+      const key = normalizeSeverity(item.severity);
+      bucket[key] = (bucket[key] || 0) + 1;
+    });
+    return bucket;
+  }, [findings]);
+
+  const onDeleteScan = async (scanId: number) => {
+    if (!window.confirm(`Delete scan #${scanId}? This cannot be undone.`)) return;
     try {
       await api(`/api/scans/${scanId}`, { method: "DELETE" });
-      if (selectedScan?.id === scanId) {
-        setSelectedScan(null);
-      }
-      await refresh("manual");
+      addToast({ type: "success", message: `Deleted scan #${scanId}.` });
+      await fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to delete scan.");
+      addToast({ type: "error", message: err instanceof Error ? err.message : "Unable to delete scan." });
     }
-  }
+  };
 
-  useEffect(() => {
-    refresh("manual");
-  }, []);
-
-  const hasActiveScans = scans.some((scan) => scan.status === "pending" || scan.status === "running");
-  const shouldPoll = autoRefresh && hasActiveScans && (view === "scans" || view === "findings");
-
-  useEffect(() => {
-    if (autoRefreshLocked) {
-      return;
+  const runDownload = async (format: "html" | "pdf" | "json") => {
+    if (!activeScan) return;
+    setDownloadLoading(true);
+    try {
+      await downloadReport(`/api/reports/${activeScan.id}/${format}`, `scan_${activeScan.id}.${format}`);
+      addToast({ type: "success", message: `Report ${format.toUpperCase()} downloaded.` });
+      setDownloadOpen(false);
+    } catch (err) {
+      addToast({ type: "error", message: err instanceof Error ? err.message : "Download failed." });
+    } finally {
+      setDownloadLoading(false);
     }
-    if (hasActiveScans) {
-      setAutoRefresh(true);
-    } else {
-      setAutoRefresh(false);
-    }
-  }, [hasActiveScans, autoRefreshLocked]);
+  };
 
-  useEffect(() => {
-    if (!shouldPoll) {
-      if (pollingRef.current) {
-        window.clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-      return;
-    }
-    if (pollingRef.current) {
-      return;
-    }
-    pollingRef.current = window.setInterval(() => refresh("auto"), 6000);
-    return () => {
-      if (pollingRef.current) {
-        window.clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    };
-  }, [shouldPoll]);
-
-  useEffect(() => {
-    const syncView = () => {
-      const hash = window.location.hash.replace("#/", "") || "overview";
-      setView(hash);
-    };
-    syncView();
-    window.addEventListener("hashchange", syncView);
-    return () => window.removeEventListener("hashchange", syncView);
-  }, []);
-
-  const grouped = groupFindings(selectedScan?.vulnerabilities || []);
-
-  const toolOptions = useMemo(() => {
-    const items = new Set<string>();
-    (selectedScan?.vulnerabilities || []).forEach((finding) => {
-      if (finding.tool) {
-        items.add(finding.tool);
-      }
+  const toggleExpanded = (id: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
-    return Array.from(items);
-  }, [selectedScan?.vulnerabilities]);
+  };
 
-  const filteredVulns = useMemo(() => {
-    const query = searchText.toLowerCase();
-    return grouped.vulnerabilities
-      .filter((item) => (severityFilter === "all" ? true : item.severity === severityFilter))
-      .filter((item) => (toolFilter === "all" ? true : item.tool === toolFilter))
-      .filter((item) => (query ? `${item.title} ${item.description} ${item.tool}`.toLowerCase().includes(query) : true))
-      .sort((a, b) => (severityRank[a.severity] ?? 99) - (severityRank[b.severity] ?? 99));
-  }, [grouped.vulnerabilities, searchText, severityFilter, toolFilter]);
+  const statusTone = (status?: string | null) => {
+    if (status === "completed") return "text-emerald-200 bg-emerald-500/20";
+    if (status === "failed") return "text-red-200 bg-red-500/20";
+    if (status === "running") return "text-amber-200 bg-amber-500/20";
+    return "text-slate-200 bg-white/10";
+  };
 
-  const normalizedProgress =
-    selectedScan?.status === "completed" ? 100 : selectedScan?.status === "failed" ? 100 : selectedScan?.progress ?? 0;
-
-  const showReports = selectedScan?.status === "completed";
-
-  const ViewPanel = () => {
-    if (view === "scans") {
-      return (
-        <>
-          <ScanForms onCreated={() => refresh("manual")} />
-          {error && <div className="error-banner">{error}</div>}
-          <div className="content-grid">
-            <motion.section className="panel" initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.58 }}>
-          <div className="panel-title-row">
-            <h2>All Scans</h2>
-            <div className="panel-actions">
-              <button className="ghost-button" onClick={() => refresh("manual")}>Refresh</button>
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={autoRefresh}
-                  onChange={() => {
-                    setAutoRefreshLocked(true);
-                    setAutoRefresh((prev) => !prev);
-                  }}
-                />
-                <span>Auto refresh</span>
-              </label>
-            </div>
-          </div>
-              <motion.div className="scan-list" initial="hidden" animate="show" variants={stagger}>
-                {loading && (
-                  <div className="scan-skeleton">
-                    <div className="skeleton-line" />
-                    <div className="skeleton-line" />
-                    <div className="skeleton-line short" />
-                  </div>
-                )}
-                {scans.map((scan) => (
-                  <motion.div
-                    key={scan.id}
-                    className={`scan-row ${selectedScan?.id === scan.id ? "active" : ""}`}
-                    variants={reveal}
-                    whileHover={{ y: -6, rotateX: 3 }}
-                    layout
-                  >
-                    <button type="button" className="scan-select" onClick={() => setSelectedScan(scan)}>
-                      <div className="scan-header">
-                        <strong>#{scan.id}</strong> {scan.scan_type.toUpperCase()} {scan.scan_mode ? `(${scan.scan_mode})` : ""}
-                        <span className={`status-pill ${scan.status}`}>{statusLabel(scan.status)}</span>
-                      </div>
-                      <div className="scan-target">{scan.target}</div>
-                      <div className="scan-meta-line">
-                        <span>{scan.current_stage || "Queued"}</span>
-                        <span>{scan.progress}%</span>
-                      </div>
-                    </button>
-                    <button type="button" className="ghost-button delete-button" onClick={() => deleteScan(scan.id)}>Delete</button>
-                  </motion.div>
-                ))}
-                {!scans.length && !loading && <p>No scans yet.</p>}
-              </motion.div>
-            </motion.section>
-          </div>
-        </>
-      );
-    }
-
-    if (view === "findings") {
-      return (
-        <div className="content-grid">
-          <motion.section className="panel detail-panel" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.58 }}>
-            <h2>Detailed Report</h2>
-            {selectedScan ? (
-              <>
-                <div className="detail-meta">
-                  <div><span>Target</span><strong>{selectedScan.target}</strong></div>
-                  <div><span>Status</span><strong>{statusLabel(selectedScan.status)}</strong></div>
-                  <div><span>Mode</span><strong>{selectedScan.scan_mode || "-"}</strong></div>
-                  <div><span>Stage</span><strong>{selectedScan.current_stage || "-"}</strong></div>
-                </div>
-                <div className="progress-track">
-                  <motion.div
-                    className={`progress-bar ${selectedScan.status}`}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${normalizedProgress}%` }}
-                    transition={{ duration: 0.7, ease: "easeOut" }}
-                  />
-                </div>
-                {!showReports && (
-                  <div className="status-banner">
-                    Reports are available once the scan completes.
-                  </div>
-                )}
-                {showReports && (
-                  <div className="report-actions report-actions-ready">
-                    <button type="button" onClick={async () => {
-                      try { await downloadReport(`/api/reports/${selectedScan.id}/html`, `scan_${selectedScan.id}.html`); } catch (err) { setError(err instanceof Error ? err.message : "Download failed."); }
-                    }}>
-                      <span className="icon">DL</span>
-                      HTML
-                    </button>
-                    <button type="button" onClick={async () => {
-                      try { await downloadReport(`/api/reports/${selectedScan.id}/pdf`, `scan_${selectedScan.id}.pdf`); } catch (err) { setError(err instanceof Error ? err.message : "Download failed."); }
-                    }}>
-                      <span className="icon">DL</span>
-                      PDF
-                    </button>
-                    <button type="button" onClick={async () => {
-                      try { await downloadReport(`/api/reports/${selectedScan.id}/json`, `scan_${selectedScan.id}.json`); } catch (err) { setError(err instanceof Error ? err.message : "Download failed."); }
-                    }}>
-                      <span className="icon">DL</span>
-                      JSON
-                    </button>
-                    <button type="button" className="ghost-button delete-button" onClick={() => deleteScan(selectedScan.id)}>Delete</button>
-                  </div>
-                )}
-
-                {selectedScan.status === "failed" && (
-                  <div className="error-banner">
-                    Scan failed. {selectedScan.error_message || "Check execution logs for details."}
-                  </div>
-                )}
-
-                <div className="summary-grid compact">
-                  <div className="panel inset metric-panel"><h3>Verified vulnerabilities</h3><p>{selectedScan.summary?.total_vulnerabilities ?? 0}</p></div>
-                  <div className="panel inset metric-panel"><h3>Observations</h3><p>{selectedScan.summary?.total_observations ?? 0}</p></div>
-                  <div className="panel inset metric-panel"><h3>High + Critical</h3><p>{(selectedScan.summary?.severity_distribution?.high ?? 0) + (selectedScan.summary?.severity_distribution?.critical ?? 0)}</p></div>
-                  <div className="panel inset metric-panel"><h3>OWASP buckets</h3><p>{Object.keys(selectedScan.summary?.owasp_top_10 || {}).length}</p></div>
-                </div>
-
-                {selectedScan.summary?.owasp_top_10 && Object.keys(selectedScan.summary.owasp_top_10).length > 0 && (
-                  <div className="owasp-box">
-                    <h3>OWASP Top 10 Mapping</h3>
-                    {Object.entries(selectedScan.summary.owasp_top_10).map(([key, value]) => (
-                      <div className="owasp-row" key={key}>
-                        <span>{key}</span>
-                        <strong>{value}</strong>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="filter-bar">
-                  <div>
-                    <label>Severity</label>
-                    <select value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value)}>
-                      <option value="all">All</option>
-                      <option value="critical">Critical</option>
-                      <option value="high">High</option>
-                      <option value="medium">Medium</option>
-                      <option value="low">Low</option>
-                      <option value="info">Info</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label>Source</label>
-                    <select value={toolFilter} onChange={(event) => setToolFilter(event.target.value)}>
-                      <option value="all">All</option>
-                      {toolOptions.map((tool) => (
-                        <option key={tool} value={tool}>{tool}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="search-field">
-                    <label>Search</label>
-                    <input
-                      value={searchText}
-                      onChange={(event) => setSearchText(event.target.value)}
-                      placeholder="Filter findings..."
-                    />
-                  </div>
-                </div>
-
-                <div className="vuln-section">
-                  <h3>Verified Vulnerabilities</h3>
-                  <div className="vuln-list">
-                    {filteredVulns.map((item) => (
-                      <article className="vuln-card" key={item.id}>
-                        <div className="vuln-head">
-                          <div>
-                            <h3>{item.title}</h3>
-                            <small className="muted">{item.tool} • {item.owasp_category || "Unmapped"}</small>
-                          </div>
-                          <span className={severityColor(item.severity)}>{item.severity}</span>
-                        </div>
-                        <p>{item.description}</p>
-                        <small>{item.tool} | score {item.score ?? "-"} | {item.confidence || "unknown"} confidence | {item.file || "n/a"}</small>
-                        {item.evidence && <pre className="evidence-box">{item.evidence}</pre>}
-                        <div className="suggested-fixes">
-                          <h4>Suggested fixes</h4>
-                          <ul>
-                            {getSuggestedFixes(item).map((fix) => (
-                              <li key={fix}>{fix}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      </article>
-                    ))}
-                    {!filteredVulns.length && <p>{selectedScan.summary?.note || "No verified vulnerabilities stored for this scan."}</p>}
-                  </div>
-                </div>
-
-                <div className="vuln-section">
-                  <h3>Observations</h3>
-                  <div className="vuln-list">
-                    {grouped.observations.map((item) => (
-                      <article className="vuln-card observation" key={item.id}>
-                        <div className="vuln-head">
-                          <h3>{item.title}</h3>
-                          <span className={severityColor(item.severity)}>{item.severity}</span>
-                        </div>
-                        <p>{item.description}</p>
-                        <small>{item.tool} | score {item.score ?? "-"} | {item.confidence || "unknown"} confidence | {item.file || "n/a"}</small>
-                      </article>
-                    ))}
-                    {!grouped.observations.length && <p>No observations captured for this scan.</p>}
-                  </div>
-                </div>
-
-                {(selectedScan.error_message || selectedScan.stderr_log || selectedScan.stdout_log) && (
-                  <div className="logs">
-                    <h3>Execution Logs</h3>
-                    {selectedScan.error_message && <pre>{selectedScan.error_message}</pre>}
-                    {selectedScan.stderr_log && <pre>{selectedScan.stderr_log}</pre>}
-                    {selectedScan.stdout_log && <pre>{selectedScan.stdout_log}</pre>}
-                  </div>
-                )}
-              </>
-            ) : (
-              <p>Select a scan to inspect the parsed findings and logs.</p>
-            )}
-          </motion.section>
-        </div>
-      );
-    }
-
-    if (view === "docs") {
-      return (
-        <motion.section className="panel docs-panel" initial="hidden" animate="show" variants={stagger}>
-          <motion.div variants={reveal}>
-            <h2>Agniscan MVP Documentation</h2>
-            <p className="lede">
-              Agniscan is a red-team validation suite that runs SAST on repositories and DAST against live targets.
-              It fuses Semgrep, Bandit, Nmap, Nuclei, Nikto, and OWASP-focused checks into a single operator dashboard.
-            </p>
-          </motion.div>
-          <motion.div className="docs-grid" variants={stagger}>
-            <motion.div className="panel inset" variants={reveal}>
-              <h3>What it does</h3>
-              <p>Launch SAST or DAST scans, track progress, and export reports in HTML/PDF/JSON.</p>
-              <p>Findings are mapped to OWASP Top 10 and severity-scored for prioritization.</p>
-            </motion.div>
-            <motion.div className="panel inset" variants={reveal}>
-              <h3>Operator flow</h3>
-              <p>1. Choose scan type and target.</p>
-              <p>2. Observe live progress and logs.</p>
-              <p>3. Review verified vulnerabilities with suggested fixes.</p>
-            </motion.div>
-            <motion.div className="panel inset" variants={reveal}>
-              <h3>Security posture</h3>
-              <p>Inputs are sanitized. Commands are invoked safely. Results are stored in SQLite.</p>
-              <p>Admin access unlocks global metrics and full scan control.</p>
-            </motion.div>
-          </motion.div>
-        </motion.section>
-      );
-    }
-
-    return (
-      <>
-        <motion.section
-          className="hero-banner panel"
-          initial={{ opacity: 0, y: 30, rotateX: 8 }}
-          animate={{ opacity: 1, y: 0, rotateX: 0 }}
-          transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}
-        >
-          <motion.div className="hero-copy" initial={{ opacity: 0, x: -18 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.08, duration: 0.56 }}>
-            <p className="eyebrow">Live Mission Feed</p>
-            <h2>Precision scanning with a hotter signal and less noise</h2>
-            <p className="lede">
-              Agniscan fuses SAST, Nmap reconnaissance, Nuclei templates, Nikto verification, and
-              OWASP-focused web analysis into a single operator workspace.
-            </p>
-            <div className="hero-stat-row">
-              <div className="hero-stat">
-                <strong>{scans.length}</strong>
-                <span>Mission records</span>
-              </div>
-              <div className="hero-stat">
-                <strong>{Object.values(tools).filter((tool) => tool.installed).length}</strong>
-                <span>Active engines</span>
-              </div>
-              <div className="hero-stat">
-                <strong>{selectedScan?.summary?.total_vulnerabilities ?? summary?.total_vulnerabilities ?? 0}</strong>
-                <span>Tracked findings</span>
-              </div>
-            </div>
-          </motion.div>
-          <motion.div
-            className="hero-visual"
-            aria-hidden="true"
-            animate={{ y: [0, -10, 0], rotateY: [-4, 4, -4] }}
-            transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
-          >
-            <div className="hero-orbit orbit-one" />
-            <div className="hero-orbit orbit-two" />
-            <div className="hero-image-shell">
-              <div className="hero-image-glow" />
-              <img className="hero-image" src="/agniscan-bot.png" alt="Agniscan assistant robot" />
-            </div>
-          </motion.div>
-        </motion.section>
-
-        <motion.section className="tool-strip" initial="hidden" animate="show" variants={stagger}>
-          {Object.entries(tools).map(([tool, info]) => (
-            <motion.div
-              className={`tool-card ${info.installed ? "ready" : "missing"}`}
-              key={tool}
-              variants={reveal}
-              whileHover={{ y: -8, rotateX: 7, rotateY: tool.length % 2 === 0 ? -5 : 5 }}
-            >
-              <strong>{tool}</strong>
-              <span>{info.installed ? "Installed" : "Unavailable"}</span>
-              {info.mode && <small>{info.mode}</small>}
-            </motion.div>
-          ))}
-        </motion.section>
-
-        {summary && (
-          <motion.section className="summary-grid" initial="hidden" animate="show" variants={stagger}>
-            <motion.div className="panel metric-panel" variants={reveal}><h3>Total scans</h3><p>{summary.total_scans ?? scans.length}</p></motion.div>
-            <motion.div className="panel metric-panel" variants={reveal}><h3>Completed</h3><p>{scans.filter((scan) => scan.status === "completed").length}</p></motion.div>
-            <motion.div className="panel metric-panel" variants={reveal}><h3>Failed</h3><p>{scans.filter((scan) => scan.status === "failed").length}</p></motion.div>
-            <motion.div className="panel metric-panel" variants={reveal}><h3>Verified vulnerabilities</h3><p>{summary.total_vulnerabilities ?? 0}</p></motion.div>
-          </motion.section>
-        )}
-      </>
-    );
+  const viewTransition = {
+    initial: { opacity: 0, y: 18 },
+    animate: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
+    exit: { opacity: 0, y: 18, transition: { duration: 0.2 } },
   };
 
   return (
-    <div className="app-shell">
-      <motion.header className="topbar" initial="hidden" animate="show" variants={stagger}>
-        <motion.div className="brand-lockup" variants={reveal}>
-          <FlameMark compact />
-          <div className="brand-stack">
-            <p className="eyebrow">Agniscan Control Deck</p>
-            <h1>Agniscan</h1>
-            <p className="lede">Real red-team scanning for code, web exposure, and OWASP-mapped findings.</p>
+    <div className="app-shell min-h-screen pb-16 text-ink">
+      <Toast items={toasts} onDismiss={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))} />
+      <header className="sticky top-0 z-40 bg-gradient-to-b from-[#07101a]/95 via-[#07101a]/80 to-transparent backdrop-blur-xl">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-6 py-4">
+          <div className="flex items-center gap-4">
+            <FlameMark compact />
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-muted">Agniscan Control Deck</p>
+              <h1 className="text-3xl font-semibold text-white">Agniscan</h1>
+              <p className="mt-1 max-w-sm text-sm text-muted">
+                Real red-team scanning for code, web exposure, and OWASP-mapped findings.
+              </p>
+            </div>
           </div>
-        </motion.div>
-        <motion.nav className="topbar-nav" variants={reveal}>
-          <a className={view === "overview" ? "active" : ""} href="#/overview">Overview</a>
-          <a className={view === "scans" ? "active" : ""} href="#/scans">Scans</a>
-          <a className={view === "findings" ? "active" : ""} href="#/findings">Findings</a>
-          <a className={view === "docs" ? "active" : ""} href="#/docs">Docs</a>
-        </motion.nav>
-        <motion.div className="topbar-actions" variants={reveal}>
-          <button className="ghost-button" onClick={() => refresh("manual")}>Refresh</button>
-          <div className="user-chip">
-            {session.username} <span>{session.role}</span>
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            <nav className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1 text-sm">
+              {Object.entries(viewLabels).map(([key, label]) => (
+                <button
+                  key={key}
+                  className={`rounded-full px-4 py-2 transition ${
+                    view === key ? "bg-accent text-slate-900 shadow-lg" : "text-ink/70 hover:text-white"
+                  }`}
+                  onClick={() => navigate(key as ViewKey)}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+            <button
+              className="btn-ghost"
+              onClick={() => fetchData()}
+              disabled={refreshing}
+              title="Refresh data"
+            >
+              {refreshing ? <Spinner size={16} /> : <ArrowPathIcon className="h-4 w-4" />} Refresh
+            </button>
+            <div className="glass-panel flex items-center gap-2 px-4 py-2 text-sm">
+              <ShieldCheckIcon className="h-4 w-4 text-neon" />
+              <span>{username ?? "analyst"}</span>
+              <span className="text-accentGlow">{role ?? "user"}</span>
+            </div>
+            <button className="btn-ghost" onClick={() => { clearSession(); window.location.reload(); }}>
+              Logout
+            </button>
           </div>
-          <button
-            className="ghost-button"
-            onClick={() => {
-              clearSession();
-              window.location.reload();
-            }}
-          >
-            Logout
-          </button>
-        </motion.div>
-      </motion.header>
-
-      {lastUpdated && (
-        <div className="status-banner subtle">
-          Last refreshed at {lastUpdated.toLocaleTimeString()}
         </div>
-      )}
+      </header>
 
-      <motion.main className="page-shell" initial="hidden" animate="show" variants={stagger}>
-        <ViewPanel />
-      </motion.main>
+      <main className="mx-auto max-w-6xl px-6">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+          <span>Last refreshed at {lastUpdated ? lastUpdated.toLocaleTimeString() : "—"}</span>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted">
+              <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={(event) => setAutoRefresh(event.target.checked)}
+              />
+              Auto refresh
+            </label>
+            {scansInProgress && (
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-amber-200">
+                Active scans running
+              </span>
+            )}
+          </div>
+        </div>
 
-      <footer className="app-footer">
-        <span>{UI_VERSION}</span>
+        {error && (
+          <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {error}
+          </div>
+        )}
+
+        <AnimatePresence mode="wait">
+          {view === "overview" && (
+            <motion.section key="overview" {...viewTransition} className="mt-8 space-y-8">
+              <div className="glass-panel grid gap-6 p-6 lg:grid-cols-[1.2fr,0.8fr]">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.25em] text-accentGlow">Live mission feed</p>
+                  <h2 className="mt-2 text-3xl font-semibold text-white">
+                    Precision scanning with a hotter signal and less noise
+                  </h2>
+                  <p className="mt-3 text-sm text-muted">
+                    Agniscan fuses SAST, Nmap reconnaissance, Nuclei templates, Nikto verification, and OWASP-focused web
+                    analysis into a single operator workspace.
+                  </p>
+                  <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                    <div className="glass-card p-4">
+                      <p className="text-xs uppercase text-muted">Mission records</p>
+                      <p className="mt-2 text-2xl font-semibold text-white">{summary?.total_scans ?? scans.length}</p>
+                    </div>
+                    <div className="glass-card p-4">
+                      <p className="text-xs uppercase text-muted">Active engines</p>
+                      <p className="mt-2 text-2xl font-semibold text-white">{Object.keys(tools).length || 0}</p>
+                    </div>
+                    <div className="glass-card p-4">
+                      <p className="text-xs uppercase text-muted">Tracked findings</p>
+                      <p className="mt-2 text-2xl font-semibold text-white">
+                        {summary?.total_vulnerabilities ?? findings.length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="glass-card flex items-center justify-center p-4">
+                  <img
+                    src="/agniscan-bot.png"
+                    alt="Agniscan bot"
+                    className="max-h-72 w-full rounded-2xl object-cover shadow-glow"
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
+                  />
+                  <div className="hidden text-center text-sm text-muted">
+                    <BoltIcon className="mx-auto h-6 w-6 text-accentGlow" />
+                    <p className="mt-2">Visual asset offline</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                {Object.entries(tools).map(([tool, status]) => (
+                  <div key={tool} className="glass-card p-4">
+                    <p className="text-xs uppercase text-muted">{tool}</p>
+                    <p className="mt-2 text-lg font-semibold text-white">
+                      {status.installed ? "Installed" : "Unavailable"}
+                    </p>
+                    <p className="text-xs text-muted">{status.mode || status.path || "local-binary"}</p>
+                  </div>
+                ))}
+              </div>
+
+              <Charts scans={scans} summary={summary} findings={findings} />
+            </motion.section>
+          )}
+
+          {view === "scans" && (
+            <motion.section key="scans" {...viewTransition} className="mt-8 space-y-8">
+              <ScanForms onCreated={() => fetchData()} />
+              <div className="grid gap-6 lg:grid-cols-[1.1fr,1fr]">
+                <div className="glass-panel p-5">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-semibold text-white">All scans</h3>
+                    <span className="text-xs uppercase text-muted">{scans.length} total</span>
+                  </div>
+                  <div className="mt-4 space-y-4">
+                    {loading && (
+                      <div className="space-y-3">
+                        {[0, 1, 2].map((item) => (
+                          <div key={item} className="h-20 rounded-2xl bg-white/5 animate-pulse" />
+                        ))}
+                      </div>
+                    )}
+                    {!loading && scans.length === 0 && (
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-muted">
+                        No scans yet. Launch a scan to populate the feed.
+                      </div>
+                    )}
+                    {scans.map((scan) => (
+                      <button
+                        key={scan.id}
+                        className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
+                          activeScan?.id === scan.id
+                            ? "border-accentGlow bg-white/10 shadow-glow"
+                            : "border-white/10 bg-white/5 hover:border-white/20"
+                        }`}
+                        onClick={() => setActiveScanId(scan.id)}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm uppercase text-muted">#{scan.id} {scan.scan_type.toUpperCase()}</p>
+                            <p className="mt-1 text-sm text-white/80">{scan.target}</p>
+                            <p className="mt-2 text-xs text-muted">{formatWhen(scan.created_at)}</p>
+                          </div>
+                          <span className={`tag ${statusTone(scan.status)}`}>{scan.status}</span>
+                        </div>
+                        <div className="mt-3 h-2 w-full rounded-full bg-white/10">
+                          <div
+                            className="h-2 rounded-full bg-gradient-to-r from-accent to-accentGlow transition-all"
+                            style={{ width: `${Math.min(100, scan.status === "completed" ? 100 : scan.progress ?? 0)}%` }}
+                          />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="glass-panel p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase text-muted">Detailed report</p>
+                      <h3 className="text-xl font-semibold text-white">
+                        {activeScan ? `Scan #${activeScan.id}` : "Select a scan"}
+                      </h3>
+                    </div>
+                    {activeScan && (
+                      <button
+                        className="btn-ghost"
+                        onClick={() => onDeleteScan(activeScan.id)}
+                      >
+                        <TrashIcon className="h-4 w-4" /> Delete
+                      </button>
+                    )}
+                  </div>
+                  {activeScan ? (
+                    <div className="mt-4 space-y-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="glass-card p-4">
+                          <p className="text-xs uppercase text-muted">Target</p>
+                          <p className="mt-2 text-sm text-white/80 break-all">{activeScan.target}</p>
+                        </div>
+                        <div className="glass-card p-4">
+                          <p className="text-xs uppercase text-muted">Stage</p>
+                          <p className="mt-2 text-sm text-white/80">{activeScan.current_stage ?? "—"}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          {activeScan.status === "completed" ? (
+                            <CheckCircleIcon className="h-5 w-5 text-emerald-300" />
+                          ) : activeScan.status === "failed" ? (
+                            <ExclamationTriangleIcon className="h-5 w-5 text-red-300" />
+                          ) : (
+                            <Spinner />
+                          )}
+                          <span className="text-sm text-white/80">{activeScan.status}</span>
+                        </div>
+                        {activeScan.status === "completed" ? (
+                          <button className="btn-primary" onClick={() => setDownloadOpen(true)}>
+                            <ArrowDownTrayIcon className="h-4 w-4" /> Reports
+                          </button>
+                        ) : (
+                          <span className="text-xs text-muted">Reports available after completion.</span>
+                        )}
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-3">
+                        <div className="glass-card p-4">
+                          <p className="text-xs uppercase text-muted">Verified vulnerabilities</p>
+                          <p className="mt-2 text-2xl font-semibold text-white">
+                            {activeScan.summary?.total_vulnerabilities ?? findings.length}
+                          </p>
+                        </div>
+                        <div className="glass-card p-4">
+                          <p className="text-xs uppercase text-muted">Observations</p>
+                          <p className="mt-2 text-2xl font-semibold text-white">
+                            {activeScan.summary?.total_observations ?? 0}
+                          </p>
+                        </div>
+                        <div className="glass-card p-4">
+                          <p className="text-xs uppercase text-muted">High + Critical</p>
+                          <p className="mt-2 text-2xl font-semibold text-white">
+                            {(severityCount.critical || 0) + (severityCount.high || 0)}
+                          </p>
+                        </div>
+                      </div>
+                      {activeScan.error_message && (
+                        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                          {activeScan.error_message}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-muted">
+                      Select a scan on the left to inspect its details.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.section>
+          )}
+
+          {view === "findings" && (
+            <motion.section key="findings" {...viewTransition} className="mt-8 space-y-6">
+              <div className="glass-panel p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase text-muted">Findings catalog</p>
+                    <h3 className="text-xl font-semibold text-white">Verified vulnerabilities</h3>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="relative">
+                      <MagnifyingGlassIcon className="absolute left-3 top-2.5 h-4 w-4 text-muted" />
+                      <input
+                        className="input-field pl-9"
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        placeholder="Filter findings..."
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 text-xs uppercase text-muted">
+                      <FunnelIcon className="h-4 w-4" /> Filters
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 lg:grid-cols-[1fr,1fr,1fr]">
+                  <select className="input-field" value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value)}>
+                    <option value="all">All severities</option>
+                    {severityOrder.map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                  <select className="input-field" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
+                    <option value="all">All sources</option>
+                    {sources.map((source) => (
+                      <option key={source} value={source}>{source}</option>
+                    ))}
+                  </select>
+                  <button className="btn-ghost" onClick={() => { setSeverityFilter("all"); setSourceFilter("all"); setSearch(""); }}>
+                    Clear filters
+                  </button>
+                </div>
+              </div>
+
+              {filteredFindings.length === 0 ? (
+                <div className="glass-panel p-6 text-sm text-muted">
+                  No findings matched your current filters.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredFindings.map((item) => {
+                    const isOpen = expanded.has(item.id);
+                    const severity = normalizeSeverity(item.severity);
+                    return (
+                      <motion.div
+                        key={item.id}
+                        layout
+                        className="glass-card p-4"
+                        whileHover={{ y: -4 }}
+                      >
+                        <button className="flex w-full flex-wrap items-start justify-between gap-3 text-left" onClick={() => toggleExpanded(item.id)}>
+                          <div>
+                            <p className="text-sm text-white/90">{item.title}</p>
+                            <p className="text-xs text-muted">{item.tool || "unknown"} · {item.file || "n/a"}</p>
+                          </div>
+                          <span className={`tag tag-${severity}`}>{severity}</span>
+                        </button>
+                        <AnimatePresence>
+                          {isOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="mt-3 text-sm text-muted"
+                            >
+                              <p>{item.description || "No description provided."}</p>
+                              {item.evidence && <p className="mt-2 text-xs text-white/70">Evidence: {item.evidence}</p>}
+                              <div className="mt-2 text-xs text-muted">
+                                OWASP: {item.owasp_category || "—"} · Score: {item.score ?? "n/a"} · Confidence: {item.confidence ?? "n/a"}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </motion.section>
+          )}
+
+          {view === "docs" && (
+            <motion.section key="docs" {...viewTransition} className="mt-8 space-y-6">
+              <div className="glass-panel p-6">
+                <p className="text-xs uppercase text-muted">Documentation</p>
+                <h3 className="mt-2 text-2xl font-semibold text-white">Operator playbook</h3>
+                <p className="mt-3 text-sm text-muted">
+                  Use Agniscan to schedule scans, review findings, and export executive reports. Results are tagged with OWASP buckets
+                  and severity so stakeholders can prioritize remediation.
+                </p>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="glass-card p-4">
+                    <p className="text-sm font-semibold text-white">1. Launch a scan</p>
+                    <p className="text-xs text-muted">Select SAST for code repos, or DAST for live endpoints.</p>
+                  </div>
+                  <div className="glass-card p-4">
+                    <p className="text-sm font-semibold text-white">2. Monitor progress</p>
+                    <p className="text-xs text-muted">Watch stages and logs while the scan runs.</p>
+                  </div>
+                  <div className="glass-card p-4">
+                    <p className="text-sm font-semibold text-white">3. Review findings</p>
+                    <p className="text-xs text-muted">Filter by severity and tool to focus remediation.</p>
+                  </div>
+                  <div className="glass-card p-4">
+                    <p className="text-sm font-semibold text-white">4. Export reports</p>
+                    <p className="text-xs text-muted">Download JSON, HTML, or PDF for auditors.</p>
+                  </div>
+                </div>
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
+      </main>
+
+      <Modal
+        open={downloadOpen}
+        title={`Reports for scan #${activeScan?.id ?? "—"}`}
+        description="Choose a report format to export. Files are generated by the backend."
+        onClose={() => setDownloadOpen(false)}
+      >
+        {activeScan && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-muted">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-white/80">{activeScan.target}</span>
+              <span className={`status-pill ${statusTone(activeScan.status)}`}>{activeScan.status}</span>
+            </div>
+            <div className="mt-2 grid gap-2 text-xs text-muted sm:grid-cols-3">
+              <span>Vulns: {activeScan.summary?.total_vulnerabilities ?? findings.length}</span>
+              <span>Observations: {activeScan.summary?.total_observations ?? 0}</span>
+              <span>Created: {formatWhen(activeScan.created_at)}</span>
+            </div>
+          </div>
+        )}
+        <div className="grid gap-3 sm:grid-cols-3">
+          {["html", "pdf", "json"].map((format) => (
+            <button
+              key={format}
+              className="btn-primary"
+              onClick={() => runDownload(format as "html" | "pdf" | "json")}
+              disabled={downloadLoading}
+            >
+              {downloadLoading ? <Spinner size={16} /> : <ArrowDownTrayIcon className="h-4 w-4" />}
+              {format.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </Modal>
+      <footer className="mt-16 py-10 text-center text-xs text-muted">
+        Agniscan UI build {new Date().toISOString().slice(0, 10)}
       </footer>
     </div>
   );

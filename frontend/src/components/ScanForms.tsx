@@ -64,65 +64,82 @@ export function ScanForms({ onCreated }: ScanFormsProps) {
   }
 
   return (
-    <div className="form-grid">
+    <div className="grid gap-6 lg:grid-cols-2">
       <motion.form
-        className="panel mission-panel"
+        className="glass-panel p-6"
         onSubmit={submitSast}
         initial={{ opacity: 0, y: 28, rotateX: 8 }}
         animate={{ opacity: 1, y: 0, rotateX: 0 }}
         transition={cardTransition}
       >
-        <h2>SAST</h2>
-        <p className="section-copy">Submit a GitHub repository URL or upload a ZIP archive for Semgrep and Bandit.</p>
-        <label>
-          GitHub repo URL
+        <h2 className="text-xl font-semibold text-white">SAST</h2>
+        <p className="mt-2 text-sm text-muted">Submit a GitHub repository URL or upload a ZIP archive for Semgrep and Bandit.</p>
+        <label className="mt-4 block text-sm text-muted">
+          <span className="input-label">GitHub repo URL</span>
           <input
             type="url"
             autoComplete="off"
             spellCheck="false"
+            className="input-field mt-2"
             value={repoUrl}
             onChange={(event) => setRepoUrl(event.target.value)}
             placeholder="https://github.com/org/repo"
           />
         </label>
-        <label>
-          ZIP upload
-          <input type="file" accept=".zip" onChange={(event) => setZipFile(event.target.files?.[0] || null)} />
+        <label className="mt-4 block text-sm text-muted">
+          <span className="input-label">ZIP upload</span>
+          <input
+            type="file"
+            accept=".zip"
+            className="mt-2 block w-full text-xs text-muted file:mr-4 file:rounded-full file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-ink/80"
+            onChange={(event) => setZipFile(event.target.files?.[0] || null)}
+          />
         </label>
-        <button disabled={submitting}>{submitting ? "Launching..." : "Launch SAST Scan"}</button>
+        <button className="btn-primary mt-5" disabled={submitting}>
+          {submitting ? "Launching..." : "Launch SAST Scan"}
+        </button>
       </motion.form>
       <motion.form
-        className="panel mission-panel"
+        className="glass-panel p-6"
         onSubmit={submitDast}
         initial={{ opacity: 0, y: 28, rotateX: 8 }}
         animate={{ opacity: 1, y: 0, rotateX: 0 }}
         transition={{ ...cardTransition, delay: 0.08 }}
       >
-        <h2>DAST</h2>
-        <p className="section-copy">Probe a live target with OWASP-focused web checks, Nuclei, Nmap, and optional Nikto. The target must be HTTP or HTTPS.</p>
-        <label>
-          Scan mode
-          <select value={dastMode} onChange={(event) => setDastMode(event.target.value as "full" | "quick")}>
+        <h2 className="text-xl font-semibold text-white">DAST</h2>
+        <p className="mt-2 text-sm text-muted">
+          Probe a live target with OWASP-focused web checks, Nuclei, Nmap, and optional Nikto. The target must be HTTP or HTTPS.
+        </p>
+        <label className="mt-4 block text-sm text-muted">
+          <span className="input-label">Scan mode</span>
+          <select
+            className="input-field mt-2"
+            value={dastMode}
+            onChange={(event) => setDastMode(event.target.value as "full" | "quick")}
+          >
             <option value="full">Full scan</option>
             <option value="quick">Quick scan</option>
           </select>
         </label>
-        <label>
-          Target URL
+        <label className="mt-4 block text-sm text-muted">
+          <span className="input-label">Target URL</span>
           <input
             type="url"
             autoComplete="off"
             spellCheck="false"
+            className="input-field mt-2"
             value={targetUrl}
             onChange={(event) => setTargetUrl(event.target.value)}
             placeholder="https://example.com"
           />
         </label>
-        <button disabled={submitting}>{submitting ? "Launching..." : "Launch DAST Scan"}</button>
+        <button className="btn-primary mt-5" disabled={submitting}>
+          {submitting ? "Launching..." : "Launch DAST Scan"}
+        </button>
       </motion.form>
       {message && (
         <motion.div
-          className="status-banner"
+          className="glass-panel px-4 py-3 text-sm text-muted"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={cardTransition}
