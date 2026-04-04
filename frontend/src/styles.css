@@ -1270,3 +1270,89 @@ h2 {
     font-size: 2.4rem;
   }
 }
+
+/* Cyber enhancement overrides */
+.app-shell {
+  position: relative;
+}
+
+.app-shell::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(103, 232, 249, 0.02) 1px, transparent 1px),
+    linear-gradient(rgba(103, 232, 249, 0.02) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: radial-gradient(circle at 30% 20%, rgba(0, 0, 0, 0.75), transparent 70%);
+  z-index: -1;
+}
+
+.panel {
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, rgba(103, 232, 249, 0.08), transparent 42%);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+
+.panel:hover::before {
+  opacity: 1;
+}
+
+.hero-banner::after {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background: conic-gradient(from 220deg, rgba(103, 232, 249, 0.1), transparent 40%, rgba(255, 122, 47, 0.12));
+  filter: blur(40px);
+  opacity: 0.35;
+  animation: heroSpin 16s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes heroSpin {
+  to { transform: rotate(360deg); }
+}
+
+.tool-card {
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.tool-card.ready {
+  box-shadow: 0 0 0 1px rgba(103, 232, 249, 0.25), 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+.tool-card:hover {
+  transform: translateY(-6px);
+}
+
+.progress-track::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  animation: scanline 3.8s infinite;
+  opacity: 0.35;
+}
+
+@keyframes scanline {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.pill.critical { background: rgba(255, 61, 90, 0.2); color: #ff7b97; }
+.pill.high { background: rgba(255, 122, 47, 0.22); color: #ffb060; }
+.pill.medium { background: rgba(255, 214, 102, 0.2); color: #ffd976; }
+.pill.low { background: rgba(103, 232, 249, 0.18); color: #7fe9f7; }
+.pill.info { background: rgba(148, 163, 184, 0.18); color: #cbd5e1; }
