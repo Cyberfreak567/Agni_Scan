@@ -153,6 +153,8 @@ export function Dashboard() {
   const [toolFilter, setToolFilter] = useState("all");
   const [searchText, setSearchText] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [autoRefreshLocked, setAutoRefreshLocked] = useState(false);
   const pollingRef = useRef<number | null>(null);
 
   async function refresh(source: "auto" | "manual" = "auto") {
@@ -161,8 +163,32 @@ export function Dashboard() {
         api<ScanRecord[]>("/api/scans"),
         api<Record<string, ToolStatus>>("/api/scans/tools"),
       ]);
-      setScans(scanData);
-      setTools(toolData);
+      setScans((prev) => {
+        if (
+          prev.length === scanData.length &&
+          prev.every(
+            (scan, idx) =>
+              scan.id === scanData[idx]?.id &&
+              scan.status === scanData[idx]?.status &&
+              scan.progress === scanData[idx]?.progress &&
+              scan.current_stage === scanData[idx]?.current_stage
+          )
+        ) {
+          return prev;
+        }
+        return scanData;
+      });
+      setTools((prev) => {
+        const prevKeys = Object.keys(prev);
+        const nextKeys = Object.keys(toolData);
+        if (
+          prevKeys.length === nextKeys.length &&
+          prevKeys.every((key) => prev[key]?.installed === toolData[key]?.installed && prev[key]?.mode === toolData[key]?.mode)
+        ) {
+          return prev;
+        }
+        return toolData;
+      });
       if (scanData.length > 0) {
         const active = selectedScan ? scanData.find((item) => item.id === selectedScan.id) : scanData[0];
         if (!selectedScan || active?.id !== selectedScan.id) {
@@ -209,9 +235,21 @@ export function Dashboard() {
   }, []);
 
   const hasActiveScans = scans.some((scan) => scan.status === "pending" || scan.status === "running");
+  const shouldPoll = autoRefresh && hasActiveScans && (view === "scans" || view === "findings");
 
   useEffect(() => {
-    if (!hasActiveScans) {
+    if (autoRefreshLocked) {
+      return;
+    }
+    if (hasActiveScans) {
+      setAutoRefresh(true);
+    } else {
+      setAutoRefresh(false);
+    }
+  }, [hasActiveScans, autoRefreshLocked]);
+
+  useEffect(() => {
+    if (!shouldPoll) {
       if (pollingRef.current) {
         window.clearInterval(pollingRef.current);
         pollingRef.current = null;
@@ -221,14 +259,14 @@ export function Dashboard() {
     if (pollingRef.current) {
       return;
     }
-    pollingRef.current = window.setInterval(() => refresh("auto"), 5000);
+    pollingRef.current = window.setInterval(() => refresh("auto"), 6000);
     return () => {
       if (pollingRef.current) {
         window.clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
     };
-  }, [hasActiveScans]);
+  }, [shouldPoll]);
 
   useEffect(() => {
     const syncView = () => {
@@ -274,10 +312,23 @@ export function Dashboard() {
           {error && <div className="error-banner">{error}</div>}
           <div className="content-grid">
             <motion.section className="panel" initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.58 }}>
-              <div className="panel-title-row">
-                <h2>All Scans</h2>
-                <button className="ghost-button" onClick={() => refresh("manual")}>Refresh</button>
-              </div>
+          <div className="panel-title-row">
+            <h2>All Scans</h2>
+            <div className="panel-actions">
+              <button className="ghost-button" onClick={() => refresh("manual")}>Refresh</button>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={autoRefresh}
+                  onChange={() => {
+                    setAutoRefreshLocked(true);
+                    setAutoRefresh((prev) => !prev);
+                  }}
+                />
+                <span>Auto refresh</span>
+              </label>
+            </div>
+          </div>
               <motion.div className="scan-list" initial="hidden" animate="show" variants={stagger}>
                 {loading && (
                   <div className="scan-skeleton">
@@ -347,19 +398,19 @@ export function Dashboard() {
                     <button type="button" onClick={async () => {
                       try { await downloadReport(`/api/reports/${selectedScan.id}/html`, `scan_${selectedScan.id}.html`); } catch (err) { setError(err instanceof Error ? err.message : "Download failed."); }
                     }}>
-                      <span className="icon">{"</>"}</span>
+                      <span className="icon">DL</span>
                       HTML
                     </button>
                     <button type="button" onClick={async () => {
                       try { await downloadReport(`/api/reports/${selectedScan.id}/pdf`, `scan_${selectedScan.id}.pdf`); } catch (err) { setError(err instanceof Error ? err.message : "Download failed."); }
                     }}>
-                      <span className="icon">PDF</span>
+                      <span className="icon">DL</span>
                       PDF
                     </button>
                     <button type="button" onClick={async () => {
                       try { await downloadReport(`/api/reports/${selectedScan.id}/json`, `scan_${selectedScan.id}.json`); } catch (err) { setError(err instanceof Error ? err.message : "Download failed."); }
                     }}>
-                      <span className="icon">{"{ }"}</span>
+                      <span className="icon">DL</span>
                       JSON
                     </button>
                     <button type="button" className="ghost-button delete-button" onClick={() => deleteScan(selectedScan.id)}>Delete</button>

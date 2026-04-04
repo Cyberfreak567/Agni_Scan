@@ -392,6 +392,16 @@ h2 {
   gap: 18px;
 }
 
+.detail-meta div {
+  min-width: 0;
+}
+
+.detail-meta strong {
+  display: block;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
 .auth-form label,
 .panel label {
   display: block;
@@ -408,6 +418,11 @@ h2 {
   gap: 12px;
   align-items: center;
   justify-content: space-between;
+}
+
+.report-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
 }
 
 .topbar {
