@@ -45,5 +45,7 @@ export interface ScanRecord {
   stdout_log?: string | null;
   summary?: ScanSummary;
   vulnerabilities?: Finding[];
+  username?: string | null;
+  user_role?: string | null;
   created_at: string;
 }

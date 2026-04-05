@@ -571,6 +571,48 @@ export function Dashboard() {
                   )}
                 </div>
               </div>
+              {role === "admin" && (
+                <div className="glass-panel p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase text-muted">Admin visibility</p>
+                      <h3 className="text-2xl font-semibold text-white">Operator activity</h3>
+                    </div>
+                    <span className="text-xs uppercase text-muted">{scans.length} total scans</span>
+                  </div>
+                  <div className="mt-5 overflow-x-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead>
+                        <tr className="text-xs uppercase tracking-[0.2em] text-muted">
+                          <th className="py-2 pr-4">User</th>
+                          <th className="py-2 pr-4">Scan</th>
+                          <th className="py-2 pr-4">Target</th>
+                          <th className="py-2 pr-4">Status</th>
+                          <th className="py-2">Created</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/10">
+                        {scans.map((scan) => (
+                          <tr key={`admin-${scan.id}`} className="text-white/80">
+                            <td className="py-3 pr-4">
+                              <div className="text-sm font-semibold text-white">{scan.username ?? "unknown"}</div>
+                              <div className="text-xs text-muted">{scan.user_role ?? "user"}</div>
+                            </td>
+                            <td className="py-3 pr-4 text-xs uppercase text-muted">
+                              #{scan.id} {scan.scan_type}
+                            </td>
+                            <td className="py-3 pr-4 text-sm text-white/80 break-all">{scan.target}</td>
+                            <td className="py-3 pr-4">
+                              <span className={`status-pill ${statusTone(scan.status)}`}>{scan.status}</span>
+                            </td>
+                            <td className="py-3 text-xs text-muted">{formatWhen(scan.created_at)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </motion.section>
           )}
 

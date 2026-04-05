@@ -80,9 +80,25 @@ def start_dast_scan(payload: DASTScanRequest, user: dict = Depends(get_current_u
 @router.get("")
 def list_scans(user: dict = Depends(get_current_user)) -> list[dict]:
     if user["role"] == "admin":
-        scans = fetch_all("SELECT * FROM scans ORDER BY id DESC")
+        scans = fetch_all(
+            """
+            SELECT scans.*, users.username AS username, users.role AS user_role
+            FROM scans
+            JOIN users ON users.id = scans.user_id
+            ORDER BY scans.id DESC
+            """
+        )
     else:
-        scans = fetch_all("SELECT * FROM scans WHERE user_id = ? ORDER BY id DESC", (user["id"],))
+        scans = fetch_all(
+            """
+            SELECT scans.*, users.username AS username, users.role AS user_role
+            FROM scans
+            JOIN users ON users.id = scans.user_id
+            WHERE scans.user_id = ?
+            ORDER BY scans.id DESC
+            """,
+            (user["id"],),
+        )
     return [_row_to_scan(row) for row in scans]
 
 
@@ -105,7 +121,15 @@ def admin_summary(user: dict = Depends(require_admin)) -> dict:
 
 @router.get("/{scan_id}")
 def get_scan(scan_id: int, user: dict = Depends(get_current_user)) -> dict:
-    scan = fetch_one("SELECT * FROM scans WHERE id = ?", (scan_id,))
+    scan = fetch_one(
+        """
+        SELECT scans.*, users.username AS username, users.role AS user_role
+        FROM scans
+        JOIN users ON users.id = scans.user_id
+        WHERE scans.id = ?
+        """,
+        (scan_id,),
+    )
     if not scan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
     if user["role"] != "admin" and scan["user_id"] != user["id"]:
