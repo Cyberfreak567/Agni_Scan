@@ -229,7 +229,7 @@ export function Dashboard() {
     const bucket: Record<string, number> = {};
     findings.forEach((item) => {
       const key = normalizeSeverity(item.severity);
-      bucket[key] = (bucket.get(key) || 0) + 1;
+      bucket[key] = (bucket[key] || 0) + 1;
     });
     return bucket;
   }, [findings]);
