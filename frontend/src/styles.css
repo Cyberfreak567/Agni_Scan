@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,7 +7,7 @@
 @layer base {
   :root {
     color-scheme: dark;
-    font-family: "Space Grotesk", "Segoe UI", sans-serif;
+    font-family: "Outfit", "Segoe UI", sans-serif;
   }
 
   * {
@@ -24,7 +26,7 @@
       radial-gradient(circle at 18% 18%, rgba(255, 120, 42, 0.22), transparent 22%),
       radial-gradient(circle at 82% 14%, rgba(108, 229, 255, 0.16), transparent 18%),
       radial-gradient(circle at 50% 75%, rgba(255, 179, 71, 0.12), transparent 32%),
-      linear-gradient(135deg, #050b11 0%, #091521 45%, #0d1f2e 100%);
+      linear-gradient(135deg, #03060b 0%, #06121c 45%, #0a1b29 100%);
     background-attachment: fixed;
     overflow-x: hidden;
   }
