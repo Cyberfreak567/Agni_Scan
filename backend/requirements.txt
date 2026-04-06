@@ -4,3 +4,4 @@ python-multipart==0.0.20
 setuptools==75.6.0
 bandit==1.8.6
 semgrep==1.130.0
+passlib[argon2]==1.7.4

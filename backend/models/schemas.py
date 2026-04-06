@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
 
 def normalize_url_text(value: str) -> str:
@@ -11,7 +11,7 @@ def normalize_url_text(value: str) -> str:
 
 class RegisterRequest(BaseModel):
     username: str = Field(min_length=3, max_length=50)
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=12, max_length=128)
     role: Literal["admin", "user"] = "user"
 
     @field_validator("username")
@@ -21,6 +21,27 @@ class RegisterRequest(BaseModel):
         if not value.replace("_", "").replace("-", "").isalnum():
             raise ValueError("Username must be alphanumeric, dash, or underscore")
         return value
+
+    @field_validator("password")
+    @classmethod
+    def password_is_strong(cls, value: str) -> str:
+        if any(ch.isspace() for ch in value):
+            raise ValueError("Password must not contain spaces")
+        if not any(ch.islower() for ch in value):
+            raise ValueError("Password must include a lowercase letter")
+        if not any(ch.isupper() for ch in value):
+            raise ValueError("Password must include an uppercase letter")
+        if not any(ch.isdigit() for ch in value):
+            raise ValueError("Password must include a digit")
+        if not any(not ch.isalnum() for ch in value):
+            raise ValueError("Password must include a symbol")
+        return value
+
+    @model_validator(mode="after")
+    def password_not_related(self) -> "RegisterRequest":
+        if self.username and self.username.lower() in self.password.lower():
+            raise ValueError("Password must not contain your username")
+        return self
 
 
 class LoginRequest(BaseModel):

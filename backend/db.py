@@ -36,7 +36,17 @@ def init_db() -> None:
                 token TEXT PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS login_attempts (
+                username TEXT NOT NULL,
+                ip_address TEXT NOT NULL,
+                failed_count INTEGER NOT NULL DEFAULT 0,
+                last_failed_at TEXT NOT NULL,
+                locked_until TEXT,
+                PRIMARY KEY (username, ip_address)
             );
 
             CREATE TABLE IF NOT EXISTS scans (
@@ -88,6 +98,7 @@ def init_db() -> None:
         _ensure_column(conn, "vulnerabilities", "owasp_category", "TEXT")
         _ensure_column(conn, "vulnerabilities", "confidence", "TEXT")
         _ensure_column(conn, "vulnerabilities", "evidence", "TEXT")
+        _ensure_column(conn, "sessions", "expires_at", "TEXT NOT NULL DEFAULT ''")
 
 
 @contextmanager

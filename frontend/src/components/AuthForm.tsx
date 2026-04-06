@@ -27,12 +27,11 @@ type AuthMode = "login" | "register";
 interface AuthState {
   username: string;
   password: string;
-  role: "user" | "admin";
 }
 
 export function AuthForm({ onAuthenticated }: AuthFormProps) {
   const [mode, setMode] = useState<AuthMode>("login");
-  const [form, setForm] = useState<AuthState>({ username: "", password: "", role: "user" });
+  const [form, setForm] = useState<AuthState>({ username: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -41,10 +40,7 @@ export function AuthForm({ onAuthenticated }: AuthFormProps) {
     setError("");
     setLoading(true);
     try {
-      const payload =
-        mode === "login"
-          ? { username: form.username, password: form.password }
-          : { username: form.username, password: form.password, role: form.role };
+      const payload = { username: form.username, password: form.password };
       const data = await api<{ token: string; username: string; role: string }>(`/api/auth/${mode}`, {
         method: "POST",
         body: JSON.stringify(payload),
@@ -109,21 +105,13 @@ export function AuthForm({ onAuthenticated }: AuthFormProps) {
               className="input-field"
               value={form.password}
               onChange={(event) => setForm({ ...form, password: event.target.value })}
-              placeholder="Minimum 8 characters"
+              placeholder="12+ chars, upper/lower/digit/symbol"
             />
           </motion.label>
           {mode === "register" && (
-            <motion.label variants={riseIn}>
-              Role
-              <select
-                className="input-field"
-                value={form.role}
-                onChange={(event) => setForm({ ...form, role: event.target.value as AuthState["role"] })}
-              >
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
-              </select>
-            </motion.label>
+            <motion.div variants={riseIn} className="text-xs text-slate-400">
+              Use at least 12 characters with a mix of uppercase, lowercase, numbers, and symbols.
+            </motion.div>
           )}
           {error && (
             <motion.div variants={riseIn} className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
